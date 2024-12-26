@@ -1,0 +1,13 @@
+[package]
+name = "termchess"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+name = "uci"
+
+[dependencies]
+anyhow = "1.0.95"
+regex = "1.11.1"
+thiserror = "2.0.9"
