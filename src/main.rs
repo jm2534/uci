@@ -3,7 +3,6 @@ use std::io::{self, BufRead};
 use uci::{
     command::{Command, CommandError},
     engine::Engine,
-    game::moves::Move,
 };
 
 struct Scanner<'a> {

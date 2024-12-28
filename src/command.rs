@@ -1,9 +1,6 @@
-use std::{collections::HashSet, fmt::Display};
+use std::fmt::Display;
 
-use crate::game::{
-    board::MoveError,
-    moves::{Move, MoveParseError},
-};
+use crate::game::moves::{Move, MoveParseError};
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -82,6 +79,7 @@ impl TryFrom<&str> for Command {
                 "ucinewgame" => Ok(Command::UciNewGame),
                 "quit" => Ok(Command::Quit),
                 "stop" => Ok(Command::Stop),
+                "go" => Ok(Command::Go),
                 "debug" => match tokens.next() {
                     Some("on") => Ok(Self::Debug(true)),
                     Some("off") => Ok(Self::Debug(false)),
@@ -90,11 +88,11 @@ impl TryFrom<&str> for Command {
                 "isready" => Ok(Command::IsReady),
                 "position" => {
                     // get starting position that follow-up moves reference
-                    // let fenstring = match tokens.next() {
-                    // Some("startpos") => None,
-                    // Some("fenstring") => tokens.next().unwrap()),
-                    // Some(_) | None => return unrecognized(value),
-                    // };
+                    let fenstring: Option<&str> = match tokens.next() {
+                        Some("startpos") => None,
+                        Some("fenstring") => unimplemented!("fenstring"),
+                        Some(_) | None => return unrecognized(value),
+                    };
 
                     if let Some("moves") = tokens.next() {
                         tokens
@@ -166,7 +164,7 @@ mod tests {
 
     #[test]
     fn test_single_position() {
-        let result = Command::try_from("abc position e2e4");
+        let result = Command::try_from("abc position startpos moves e2e4");
         assert_eq!(
             result.unwrap(),
             Command::Position(vec![Move {
@@ -178,7 +176,7 @@ mod tests {
 
     #[test]
     fn test_multi_position() {
-        let result = Command::try_from("  abc  position  def startpos  ghi  moves e2e4 b3b7 g1a4");
+        let result = Command::try_from("  abc  position startpos moves e2e4 e7e5");
         assert_eq!(
             result.unwrap(),
             Command::Position(vec![
@@ -187,13 +185,9 @@ mod tests {
                     stop: Tile { file: 4, rank: 3 }
                 },
                 Move {
-                    start: Tile { file: 1, rank: 2 },
-                    stop: Tile { file: 1, rank: 6 }
+                    start: Tile { file: 4, rank: 6 },
+                    stop: Tile { file: 4, rank: 4 }
                 },
-                Move {
-                    start: Tile { file: 6, rank: 0 },
-                    stop: Tile { file: 0, rank: 3 }
-                }
             ])
         )
     }

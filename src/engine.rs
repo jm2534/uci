@@ -50,16 +50,19 @@ impl<S: Strategy> Engine<S> {
             Command::Position(ref moves) => {
                 for attempt in moves {
                     if let Err(e) = self.board.try_move(*attempt) {
-                        panic!("{e}")
+                        return Err(e);
                     }
                 }
                 Ok(None)
             }
             Command::IsReady => Ok(Some("readyok".to_string())),
             Command::Register => todo!(),
-            Command::Go => todo!(),
+            Command::Go => {
+                let best_move = self.strategy.step(self.board);
+                Ok(Some(best_move.to_string()))
+            }
             Command::Stop => todo!(),
-            Command::Quit => todo!(),
+            Command::Quit => Ok(None),
         };
 
         if let Ok(_) = response {
