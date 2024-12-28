@@ -1,11 +1,26 @@
-use std::sync::LazyLock;
+use std::{fmt::Display, sync::LazyLock};
 
 use regex::Regex;
 use thiserror::Error;
 
-use super::tile::{Tile, TileParseError};
+use super::{
+    piece::Piece,
+    tile::{Tile, TileParseError},
+};
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum MoveKind {
+    Quiet,
+    DoublePawnPush,
+    KingCastle,
+    QueenCastle,
+    Capture(Piece),
+    EnPassantCapture(Piece),
+    Promotion(Piece),
+    PromotionCapture(Piece, Piece),
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Move {
     pub start: Tile,
     pub stop: Tile,
@@ -13,6 +28,12 @@ pub struct Move {
 
 impl Move {
     const NULL_MOVE: &str = "0000";
+}
+
+impl Display for Move {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}{}", self.start, self.stop)
+    }
 }
 
 #[derive(Error, Debug, PartialEq, PartialOrd, Ord, Eq)]
@@ -61,7 +82,6 @@ impl TryFrom<&str> for Move {
 
 #[cfg(test)]
 mod tests {
-    
 
     use super::*;
     use anyhow::Result;

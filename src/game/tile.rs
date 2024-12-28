@@ -1,10 +1,49 @@
 use std::fmt::Display;
 use thiserror::Error;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
+/// A zero-indexed, row-column (i.e. "little endian rank-file")
+/// representation of a chess tile in the form `Tile(rank, file)`.
+///
+/// Data is typed using 64-bit integers for downstream time (not space)
+/// efficiency.
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Tile {
     pub rank: usize,
     pub file: usize,
+}
+
+// Tile(usize, usize)
+
+impl Tile {
+    pub fn as_index(&self) -> usize {
+        ((self.rank << 3) + self.file).try_into().unwrap()
+    }
+
+    pub fn from_index(index: usize) -> Self {
+        Tile::from(index)
+    }
+}
+
+impl From<usize> for Tile {
+    fn from(value: usize) -> Self {
+        Tile {
+            rank: value >> 3,
+            file: value & 7,
+        } // efficient /8 and %8
+    }
+}
+
+impl From<&Tile> for u64 {
+    fn from(tile: &Tile) -> Self {
+        u64::from(*tile)
+    }
+}
+
+impl From<Tile> for u64 {
+    fn from(tile: Tile) -> Self {
+        1 << ((tile.rank << 3) + tile.file)
+    }
 }
 
 impl Display for Tile {
