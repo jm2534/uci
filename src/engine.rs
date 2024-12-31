@@ -8,7 +8,10 @@ const AUTHOR: &str = env!("CARGO_PKG_AUTHORS");
 
 use crate::{
     command::Command,
-    game::board::{Board, MoveError},
+    game::{
+        board::{Board, MoveError},
+        color::Color,
+    },
 };
 
 pub struct Engine<S: Strategy> {
@@ -31,7 +34,7 @@ impl Default for Engine<Minimax> {
             state: Command::Uci,
             board: Board::new(),
             debug: false,
-            strategy: Minimax::new(),
+            strategy: Minimax::new(Color::White),
         }
     }
 }

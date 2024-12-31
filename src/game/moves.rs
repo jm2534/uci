@@ -10,17 +10,32 @@ use super::{
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum MoveKind {
+    /// All moves which have no captures or promotions, or result in check
     Quiet,
+
+    /// Initial pawn move two steps forward
     DoublePawnPush,
+
+    /// King-side castle
     KingCastle,
+
+    /// Queen-side castle
     QueenCastle,
+
+    /// A move resulting in the capture of the contained piece    
     Capture(Piece),
+
+    /// A capture accomplished through enpassant
     EnPassantCapture(Piece),
+
+    /// A promotion of a piece into the contained piece
     Promotion(Piece),
+
+    /// A promotion of a piece into the first contained piece, capturing the second
     PromotionCapture(Piece, Piece),
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Move {
     pub start: Tile,
     pub stop: Tile,

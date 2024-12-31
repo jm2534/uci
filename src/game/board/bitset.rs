@@ -57,15 +57,15 @@ impl Bitset {
         count
     }
 
-    pub fn contains(&self, tile: &Tile) -> bool {
-        (self & tile).is_empty()
+    pub fn contains(&self, tile: Tile) -> bool {
+        !(*self & tile).is_empty()
     }
 
-    pub fn insert(&mut self, tile: &Tile) {
+    pub fn insert(&mut self, tile: Tile) {
         self.0 |= u64::from(tile)
     }
 
-    pub fn toggle(&mut self, tile: &Tile) {
+    pub fn toggle(&mut self, tile: Tile) {
         self.0 ^= u64::from(tile)
     }
 
@@ -75,13 +75,13 @@ impl Bitset {
 
     /// Modifies `self` in-place with the set union from
     /// `self`` and `other`.
-    pub fn union_with(&mut self, other: &Self) {
+    pub fn union_with(&mut self, other: Self) {
         self.0 |= other.0
     }
 
     /// Modifies `self` in-place with the set intersection from
     /// `self`` and `other`.
-    pub fn intersect_with(&mut self, other: &Self) {
+    pub fn intersect_with(&mut self, other: Self) {
         self.0 &= other.0
     }
 
@@ -97,7 +97,7 @@ impl Bitset {
     where
         T: Iterator<Item = &'a Bitset>,
     {
-        bitsets.fold(Bitset(0), |val, set| val | set)
+        bitsets.fold(Bitset(0), |val, &set| val | set)
     }
 
     /// Creates a bitset that is the set intersection of an iterable of
@@ -106,9 +106,57 @@ impl Bitset {
     where
         T: Iterator<Item = &'a Bitset>,
     {
-        bitsets.fold(Bitset(0), |val, set| val & set)
+        bitsets.fold(Bitset(0), |val, &set| val & set)
     }
 }
+
+impl From<Bitset> for u64 {
+    fn from(value: Bitset) -> Self {
+        value.0
+    }
+}
+
+impl From<u64> for Bitset {
+    fn from(value: u64) -> Self {
+        Bitset(value)
+    }
+}
+
+impl From<Tile> for Bitset {
+    fn from(value: Tile) -> Self {
+        Bitset(value.into())
+    }
+}
+
+impl<T: Into<u64>> BitAnd<T> for Bitset {
+    type Output = Bitset;
+
+    fn bitand(self, rhs: T) -> Self::Output {
+        Bitset(self.0 & rhs.into())
+    }
+}
+
+impl<T: Into<u64>> BitOr<T> for Bitset {
+    type Output = Bitset;
+
+    fn bitor(self, rhs: T) -> Self::Output {
+        Bitset(self.0 | rhs.into())
+    }
+}
+
+// impl<T> BitOr<&T> for Bitset
+// where
+//     Bitset: BitOr<T>,
+//     T: Copy,
+//     // <Bitset as BitOr<T>>::Output: Into<Bitset>,
+// {
+//     type Output = Bitset;
+
+//     fn bitor(self, rhs: &T) -> Self::Output {
+//         // (self | *rhs).into()
+//         self
+//     }
+// }
 
 impl ShlAssign<usize> for Bitset {
     fn shl_assign(&mut self, rhs: usize) {
@@ -122,11 +170,11 @@ impl ShrAssign<usize> for Bitset {
     }
 }
 
-impl BitOrAssign<&Bitset> for Bitset {
-    fn bitor_assign(&mut self, rhs: &Bitset) {
-        *self = Self(self.0 | rhs.0)
-    }
-}
+// impl BitOrAssign<&Bitset> for Bitset {
+//     fn bitor_assign(&mut self, rhs: &Bitset) {
+//         *self = Self(self.0 | rhs.0)
+//     }
+// }
 
 impl BitOrAssign<Bitset> for Bitset {
     fn bitor_assign(&mut self, rhs: Bitset) {
@@ -134,87 +182,82 @@ impl BitOrAssign<Bitset> for Bitset {
     }
 }
 
-impl BitOr<&Bitset> for Bitset {
-    type Output = Bitset;
+// impl BitOr<Tile> for Bitset {
+//     type Output = Bitset;
 
-    fn bitor(self, rhs: &Bitset) -> Self::Output {
-        Bitset(self.0 | rhs.0)
+//     fn bitor(self, rhs: Tile) -> Self::Output {
+//         Bitset(self.0 | u64::from(rhs))
+//     }
+// }
+
+// impl BitAnd<&Bitset> for Bitset {
+//     type Output = Bitset;
+
+//     fn bitand(self, rhs: &Bitset) -> Self::Output {
+//         Bitset(self.0 & rhs.0)
+//     }
+// }
+
+// impl BitAnd<&Tile> for Bitset {
+//     type Output = Bitset;
+
+//     fn bitand(self, rhs: &Tile) -> Self::Output {
+//         Bitset(self.0 & u64::from(rhs))
+//     }
+// }
+
+// impl BitAnd<&Tile> for &Bitset {
+//     type Output = Bitset;
+
+//     fn bitand(self, rhs: &Tile) -> Self::Output {
+//         Bitset(self.0 & u64::from(rhs))
+//     }
+// }
+
+// impl BitAnd<Tile> for Bitset {
+//     type Output = Bitset;
+
+//     fn bitand(self, rhs: Tile) -> Self::Output {
+//         Bitset(self.0 & u64::from(rhs))
+//     }
+// }
+
+// impl<'a, T> From<T> for Bitset
+// where
+//     T: Iterator<Item = Tile>,
+// {
+//     fn from(tiles: T) -> Self {
+//         let and = |bits: u64, tile: Tile| bits | u64::from(tile);
+//         Bitset(tiles.fold(0, and))
+//     }
+// }
+
+#[cfg(test)]
+mod test_bitset {
+    use super::*;
+
+    #[test]
+    fn test_is_empty() {
+        assert!(Bitset(0).is_empty());
+        assert!(!Bitset(1).is_empty());
     }
-}
 
-impl BitOr<&Tile> for Bitset {
-    type Output = Bitset;
-
-    fn bitor(self, rhs: &Tile) -> Self::Output {
-        Bitset(self.0 | u64::from(rhs))
+    #[test]
+    fn test_is_not_empty() {
+        assert!(!Bitset(1).is_empty());
     }
-}
 
-impl BitOr<&Tile> for &Bitset {
-    type Output = Bitset;
-
-    fn bitor(self, rhs: &Tile) -> Self::Output {
-        Bitset(self.0 | u64::from(rhs))
+    #[test]
+    fn test_count() {
+        assert_eq!(Bitset(0).count(), 0);
+        assert_eq!(Bitset(1).count(), 1);
+        assert_eq!(Bitset(255).count(), 8);
     }
-}
 
-impl BitOr<Tile> for Bitset {
-    type Output = Bitset;
-
-    fn bitor(self, rhs: Tile) -> Self::Output {
-        Bitset(self.0 | u64::from(rhs))
-    }
-}
-
-impl BitAnd<&Bitset> for Bitset {
-    type Output = Bitset;
-
-    fn bitand(self, rhs: &Bitset) -> Self::Output {
-        Bitset(self.0 & rhs.0)
-    }
-}
-
-impl BitAnd<&Tile> for Bitset {
-    type Output = Bitset;
-
-    fn bitand(self, rhs: &Tile) -> Self::Output {
-        Bitset(self.0 & u64::from(rhs))
-    }
-}
-
-impl BitAnd<&Tile> for &Bitset {
-    type Output = Bitset;
-
-    fn bitand(self, rhs: &Tile) -> Self::Output {
-        Bitset(self.0 & u64::from(rhs))
-    }
-}
-
-impl BitAnd<Tile> for Bitset {
-    type Output = Bitset;
-
-    fn bitand(self, rhs: Tile) -> Self::Output {
-        Bitset(self.0 & u64::from(rhs))
-    }
-}
-
-impl<'a, T> From<T> for Bitset
-where
-    T: Iterator<Item = &'a Tile>,
-{
-    fn from(tiles: T) -> Self {
-        let and = |bits: u64, tile: &Tile| bits | u64::from(tile);
-        Bitset(tiles.fold(0, and))
-    }
-}
-
-/// The linear (i.e. `0..63`) bitset index represented by `tile`.
-fn index_of(tile: Tile) -> usize {
-    ((tile.rank << 3) + tile.file).try_into().unwrap()
-}
-
-impl From<Tile> for Bitset {
-    fn from(value: Tile) -> Self {
-        Bitset(value.into())
+    #[test]
+    fn test_contains() {
+        assert!(!Bitset(0).contains(Tile { rank: 0, file: 0 }));
+        assert!(Bitset(1).contains(Tile { rank: 0, file: 0 }));
+        assert!(Bitset(8).contains(Tile { rank: 0, file: 3 }));
     }
 }

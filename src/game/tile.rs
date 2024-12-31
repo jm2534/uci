@@ -1,21 +1,14 @@
 use std::fmt::Display;
 use thiserror::Error;
 
-/// A zero-indexed, row-column (i.e. "little endian rank-file")
-/// representation of a chess tile in the form `Tile(rank, file)`.
-///
-/// Data is typed using 64-bit integers for downstream time (not space)
-/// efficiency.
-
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Tile {
     pub rank: usize,
     pub file: usize,
 }
 
-// Tile(usize, usize)
-
 impl Tile {
+    /// The flattened (i.e. `0..63`) board index represented by `tile`.
     pub fn as_index(&self) -> usize {
         ((self.rank << 3) + self.file).try_into().unwrap()
     }
@@ -34,13 +27,13 @@ impl From<usize> for Tile {
     }
 }
 
-impl From<&Tile> for u64 {
-    fn from(tile: &Tile) -> Self {
-        u64::from(*tile)
+impl From<Tile> for u64 {
+    fn from(tile: Tile) -> Self {
+        1 << ((tile.rank << 3) + tile.file)
     }
 }
 
-impl From<Tile> for u64 {
+impl From<Tile> for usize {
     fn from(tile: Tile) -> Self {
         1 << ((tile.rank << 3) + tile.file)
     }
@@ -106,5 +99,14 @@ mod tests {
         let disp = format!("{}", Tile::try_from(value)?);
         assert_eq!(disp, value);
         Ok(())
+    }
+
+    #[test]
+    fn test_tile_to_index() {
+        let tile = Tile { rank: 0, file: 0 };
+        assert_eq!(u64::from(tile), 1);
+
+        let tile = Tile { rank: 2, file: 3 };
+        assert_eq!(u64::from(tile) as usize, 1 << (tile.rank * 8 + tile.file));
     }
 }
