@@ -7,8 +7,17 @@ pub struct ColorParseError;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Sequence)]
 pub enum Color {
-    White,
     Black,
+    White,
+}
+
+impl From<bool> for Color {
+    fn from(value: bool) -> Self {
+        match value {
+            true => Color::White,
+            false => Color::Black,
+        }
+    }
 }
 
 impl FromStr for Color {

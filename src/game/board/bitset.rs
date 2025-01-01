@@ -1,7 +1,14 @@
 use enum_iterator::Sequence;
 
 use crate::game::tile::Tile;
-use std::ops::{BitAnd, BitOr, BitOrAssign, Shl, ShlAssign, Shr, ShrAssign};
+use std::{
+    fmt::{Binary, Error, Formatter},
+    fs::write,
+    ops::{
+        BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Shl, ShlAssign, Shr,
+        ShrAssign,
+    },
+};
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, Sequence)]
 pub(super) enum Offset {
@@ -95,9 +102,9 @@ impl Bitset {
     /// existing bitsets.
     pub fn union<'a, T>(bitsets: T) -> Bitset
     where
-        T: Iterator<Item = &'a Bitset>,
+        T: Iterator<Item = Bitset>,
     {
-        bitsets.fold(Bitset(0), |val, &set| val | set)
+        bitsets.fold(Bitset(0), |val, set| val | set)
     }
 
     /// Creates a bitset that is the set intersection of an iterable of
@@ -107,6 +114,12 @@ impl Bitset {
         T: Iterator<Item = &'a Bitset>,
     {
         bitsets.fold(Bitset(0), |val, &set| val & set)
+    }
+}
+
+impl From<Bitset> for bool {
+    fn from(value: Bitset) -> Self {
+        value.0 > 0
     }
 }
 
@@ -144,19 +157,31 @@ impl<T: Into<u64>> BitOr<T> for Bitset {
     }
 }
 
-// impl<T> BitOr<&T> for Bitset
-// where
-//     Bitset: BitOr<T>,
-//     T: Copy,
-//     // <Bitset as BitOr<T>>::Output: Into<Bitset>,
-// {
-//     type Output = Bitset;
+impl<T: Into<u64>> BitXor<T> for Bitset {
+    type Output = Bitset;
 
-//     fn bitor(self, rhs: &T) -> Self::Output {
-//         // (self | *rhs).into()
-//         self
-//     }
-// }
+    fn bitxor(self, rhs: T) -> Self::Output {
+        Bitset(self.0 ^ rhs.into())
+    }
+}
+
+impl<T: Into<u64>> BitAndAssign<T> for Bitset {
+    fn bitand_assign(&mut self, rhs: T) {
+        self.0 &= rhs.into();
+    }
+}
+
+impl<T: Into<u64>> BitOrAssign<T> for Bitset {
+    fn bitor_assign(&mut self, rhs: T) {
+        self.0 |= rhs.into();
+    }
+}
+
+impl<T: Into<u64>> BitXorAssign<T> for Bitset {
+    fn bitxor_assign(&mut self, rhs: T) {
+        self.0 ^= rhs.into();
+    }
+}
 
 impl ShlAssign<usize> for Bitset {
     fn shl_assign(&mut self, rhs: usize) {
@@ -170,67 +195,12 @@ impl ShrAssign<usize> for Bitset {
     }
 }
 
-// impl BitOrAssign<&Bitset> for Bitset {
-//     fn bitor_assign(&mut self, rhs: &Bitset) {
-//         *self = Self(self.0 | rhs.0)
-//     }
-// }
-
-impl BitOrAssign<Bitset> for Bitset {
-    fn bitor_assign(&mut self, rhs: Bitset) {
-        *self = Self(self.0 | rhs.0)
+impl Binary for Bitset {
+    // Required method
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(f, "{:b}", self.0)
     }
 }
-
-// impl BitOr<Tile> for Bitset {
-//     type Output = Bitset;
-
-//     fn bitor(self, rhs: Tile) -> Self::Output {
-//         Bitset(self.0 | u64::from(rhs))
-//     }
-// }
-
-// impl BitAnd<&Bitset> for Bitset {
-//     type Output = Bitset;
-
-//     fn bitand(self, rhs: &Bitset) -> Self::Output {
-//         Bitset(self.0 & rhs.0)
-//     }
-// }
-
-// impl BitAnd<&Tile> for Bitset {
-//     type Output = Bitset;
-
-//     fn bitand(self, rhs: &Tile) -> Self::Output {
-//         Bitset(self.0 & u64::from(rhs))
-//     }
-// }
-
-// impl BitAnd<&Tile> for &Bitset {
-//     type Output = Bitset;
-
-//     fn bitand(self, rhs: &Tile) -> Self::Output {
-//         Bitset(self.0 & u64::from(rhs))
-//     }
-// }
-
-// impl BitAnd<Tile> for Bitset {
-//     type Output = Bitset;
-
-//     fn bitand(self, rhs: Tile) -> Self::Output {
-//         Bitset(self.0 & u64::from(rhs))
-//     }
-// }
-
-// impl<'a, T> From<T> for Bitset
-// where
-//     T: Iterator<Item = Tile>,
-// {
-//     fn from(tiles: T) -> Self {
-//         let and = |bits: u64, tile: Tile| bits | u64::from(tile);
-//         Bitset(tiles.fold(0, and))
-//     }
-// }
 
 #[cfg(test)]
 mod test_bitset {

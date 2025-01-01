@@ -1,6 +1,9 @@
 use std::fmt::Display;
 
-use crate::game::moves::{Move, MoveParseError};
+use crate::game::{
+    board::Board,
+    moves::{Move, MoveParseError},
+};
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -90,7 +93,7 @@ impl TryFrom<&str> for Command {
                     // get starting position that follow-up moves reference
                     let fenstring: Option<&str> = match tokens.next() {
                         Some("startpos") => None,
-                        Some("fenstring") => unimplemented!("fenstring"),
+                        fenstring @ Some("fenstring") => unimplemented!(),
                         Some(_) | None => return unrecognized(value),
                     };
 

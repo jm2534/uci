@@ -46,6 +46,23 @@ impl Placement {
     }
 }
 
+impl IntoIterator for Placement {
+    type Item = (PieceKind, Bitset);
+    type IntoIter = std::array::IntoIter<Self::Item, 6>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let values = [
+            (PieceKind::Pawn, self.pawns),
+            (PieceKind::Bishop, self.bishops),
+            (PieceKind::Rook, self.rooks),
+            (PieceKind::Knight, self.knights),
+            (PieceKind::Queen, self.queens),
+            (PieceKind::King, self.king),
+        ];
+        values.into_iter()
+    }
+}
+
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub struct Board {
     occupancy: Bitset,
@@ -56,14 +73,6 @@ pub struct Board {
 impl Board {
     const MAX_DIM: u8 = 8;
     const MIN_DIM: u8 = 0;
-    const PIECE_SETS: [PieceKind; 6] = [
-        PieceKind::Pawn,
-        PieceKind::Bishop,
-        PieceKind::Rook,
-        PieceKind::Knight,
-        PieceKind::Queen,
-        PieceKind::King,
-    ];
 
     pub fn new() -> Self {
         let white = Placement {
@@ -83,7 +92,9 @@ impl Board {
             king: Bitset::from(Tile { rank: 7, file: 4 }),
         };
 
-        let occupancy = Bitset(0); // TODO: fix
+        let occupancy = (Bitset::union(white.into_iter().map(|(_, set)| set))
+            | Bitset::union(black.into_iter().map(|(_, set)| set)));
+
         Self {
             white,
             black,
@@ -107,83 +118,71 @@ impl Board {
         todo!()
     }
 
-    pub fn pieces_of<'a>(&'a self, color: Color) -> Vec<Piece> {
-        todo!()
-        //     let sets = match color {
-        //         Color::Black => &self.pieces[..6],
-        //         Color::White => &self.pieces[6..],
-        //     };
-        //     let mut pieces = Vec::with_capacity(64);
-        //     for (i, set) in sets.iter().enumerate() {
-        //         let kind = Self::PIECE_SETS[i];
-        //         for _ in 0..set.count() {
-        //             pieces.push(Piece { kind, color })
-        //         }
-        //     }
-        //     pieces
+    pub fn pieces_of(&self, color: Color) -> Vec<Piece> {
+        let placement = match color {
+            Color::White => self.white,
+            Color::Black => self.black,
+        };
+        let mut pieces = Vec::with_capacity(64);
+
+        for (kind, set) in placement {
+            for _ in 0..set.count() {
+                pieces.push(Piece { kind, color })
+            }
+        }
+        pieces
     }
 
-    fn set_of(&self, piece: Piece) -> Bitset {
+    fn set_of(&mut self, piece: Piece) -> &mut Bitset {
         match (piece.kind, piece.color) {
-            (PieceKind::Pawn, Color::White) => self.white.pawns,
-            (PieceKind::Pawn, Color::Black) => self.black.pawns,
-            (PieceKind::Rook, Color::White) => self.white.rooks,
-            (PieceKind::Rook, Color::Black) => self.black.rooks,
-            (PieceKind::Bishop, Color::White) => self.white.bishops,
-            (PieceKind::Bishop, Color::Black) => self.black.bishops,
-            (PieceKind::Knight, Color::White) => self.white.knights,
-            (PieceKind::Knight, Color::Black) => self.black.knights,
-            (PieceKind::Queen, Color::White) => self.white.queens,
-            (PieceKind::Queen, Color::Black) => self.black.queens,
-            (PieceKind::King, Color::White) => self.white.king,
-            (PieceKind::King, Color::Black) => self.black.king,
+            (PieceKind::Pawn, Color::White) => &mut self.white.pawns,
+            (PieceKind::Pawn, Color::Black) => &mut self.black.pawns,
+            (PieceKind::Rook, Color::White) => &mut self.white.rooks,
+            (PieceKind::Rook, Color::Black) => &mut self.black.rooks,
+            (PieceKind::Bishop, Color::White) => &mut self.white.bishops,
+            (PieceKind::Bishop, Color::Black) => &mut self.black.bishops,
+            (PieceKind::Knight, Color::White) => &mut self.white.knights,
+            (PieceKind::Knight, Color::Black) => &mut self.black.knights,
+            (PieceKind::Queen, Color::White) => &mut self.white.queens,
+            (PieceKind::Queen, Color::Black) => &mut self.black.queens,
+            (PieceKind::King, Color::White) => &mut self.white.king,
+            (PieceKind::King, Color::Black) => &mut self.black.king,
         }
     }
 
-    fn occupied(&self, tile: Tile) -> bool {
-        (self.occupancy & tile).is_empty()
+    fn place(&mut self, piece: Piece, tile: Tile) {
+        let set = self.set_of(piece);
+        *set |= tile;
+        self.occupancy |= tile;
+    }
+
+    pub fn occupied(&self, tile: Tile) -> bool {
+        !(self.occupancy & tile).is_empty()
     }
 
     pub fn occupant(&self, tile: Tile) -> Option<Piece> {
-        todo!()
-        //     match self.occupied(tile) {
-        //         false => None,
-        //         true => {
-        //             let kind: PieceKind;
-        //             let color: Color;
-        //             for (i, set) in self.pieces.iter().enumerate() {
-        //                 if !set.is_empty() && !(set & tile).is_empty() {
-        //                     color = match i {
-        //                         ..=5 => Color::White,
-        //                         6..=11 => Color::Black,
-        //                         _ => panic!("{} out of bounds", i),
-        //                     };
-
-        //                     kind = match i % cardinality::<PieceKind>() {
-        //                         0 => PieceKind::Pawn,
-        //                         1 => PieceKind::Bishop,
-        //                         2 => PieceKind::Rook,
-        //                         3 => PieceKind::Knight,
-        //                         4 => PieceKind::Queen,
-        //                         5 => PieceKind::King,
-        //                         _ => panic!("{} out of bounds", i),
-        //                     };
-
-        //                     return Some(Piece { kind, color });
-        //                 }
-        //             }
-        //             panic!("")
-        //         }
-        //     }
+        if self.occupied(tile) {
+            let index = u64::from(tile);
+            let pieces = self.white.into_iter().chain(self.black.into_iter());
+            for (pos, (kind, set)) in pieces.enumerate() {
+                if (set & index).into() {
+                    return Some(Piece {
+                        kind,
+                        color: Color::from(pos < 6),
+                    });
+                }
+            }
+        }
+        None
     }
 
     pub fn try_move(&mut self, attempt: Move) -> Result<MoveKind, MoveError> {
         let mut kind = Err(MoveError::NonexistentPiece(attempt.start));
         if let Some(actor) = self.occupant(attempt.start) {
-            let moveset = Bitset(0);
+            let moveset = Bitset(0); // TODO: implement
             if moveset.contains(attempt.stop) {
                 // Toggle origin bit and set destination bit
-                let mut actor_set = self.set_of(actor);
+                let actor_set = self.set_of(actor);
                 actor_set.toggle(attempt.start);
                 actor_set.insert(attempt.stop);
 
@@ -191,7 +190,7 @@ impl Board {
                 kind = match self.occupant(attempt.stop) {
                     None => Ok(MoveKind::Quiet),
                     Some(target) => {
-                        let mut target_set = self.set_of(target);
+                        let target_set = self.set_of(target);
                         target_set.toggle(attempt.stop);
                         Ok(MoveKind::Capture(target))
                     }
@@ -218,8 +217,7 @@ impl Board {
     }
 
     fn flatten(&self) -> Vec<Option<Piece>> {
-        let t = Tile::from_index;
-        let f = |i| self.occupant(t(i));
+        let f = |i: usize| self.occupant(i.into());
         (0..64).map(f).collect()
     }
 }
@@ -242,11 +240,8 @@ impl TryFrom<&str> for Board {
             if rank < 0 {
                 break;
             }
-
             let tile = Tile { rank, file };
-            let piece = || Bitset::from(tile); // lazy; avoid overflows on '/'
             let mut spaces = 1; // number of files to step this iteration
-
             match ch {
                 '/' => {
                     // next row
@@ -255,21 +250,10 @@ impl TryFrom<&str> for Board {
                     spaces = 0;
                 }
                 new_spaces @ '1'..='8' => spaces = new_spaces.to_digit(10).unwrap() as usize,
-                // white
-                'P' => board.white.pawns |= piece(),
-                'R' => board.white.rooks |= piece(),
-                'B' => board.white.bishops |= piece(),
-                'N' => board.white.knights |= piece(),
-                'Q' => board.white.queens |= piece(),
-                'K' => board.white.king |= piece(),
-                // black
-                'p' => board.black.pawns |= piece(),
-                'r' => board.black.rooks |= piece(),
-                'b' => board.black.bishops |= piece(),
-                'n' => board.black.knights |= piece(),
-                'q' => board.black.queens |= piece(),
-                'k' => board.black.king |= piece(),
-                _ => return Err(ParseBoardError::Unrecognized(ch)),
+                ch => match Piece::try_from(ch) {
+                    Ok(piece) => board.place(piece, tile),
+                    Err(_) => todo!(),
+                },
             };
 
             file += spaces;
@@ -396,7 +380,7 @@ mod tests {
         let flattened = board.flatten();
 
         assert_eq!(flattened.len(), 64);
-        assert_eq!(flattened.iter().filter(|p| p.is_some()).count(), 32);
+        assert_eq!(flattened.iter().filter(|p| { p.is_some() }).count(), 32);
         for (i, piece) in flattened.iter().enumerate() {
             let tile = Tile::from_index(i);
             assert_eq!(piece, &correct_starting_piece(tile))

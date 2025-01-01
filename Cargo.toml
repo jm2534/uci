@@ -12,3 +12,5 @@ anyhow = "1.0.95"
 enum-iterator = "2.1.0"
 regex = "1.11.1"
 thiserror = "2.0.9"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
