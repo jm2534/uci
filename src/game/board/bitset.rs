@@ -3,9 +3,8 @@ use enum_iterator::Sequence;
 use crate::game::tile::Tile;
 use std::{
     fmt::{Binary, Error, Formatter},
-    fs::write,
     ops::{
-        BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Shl, ShlAssign, Shr,
+        BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, ShlAssign, Shr,
         ShrAssign,
     },
 };
@@ -43,7 +42,26 @@ impl Offset {
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub(super) struct Bitset(pub u64);
+pub struct Bitset(pub u64);
+
+pub struct BitsetTiles {
+    value: i64,
+}
+
+impl Iterator for BitsetTiles {
+    type Item = Tile;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.value {
+            0 => None,
+            x => {
+                let ls1b = x & -x; // isolate LS1B
+                self.value ^= ls1b;
+                Some(Tile::from_index(ls1b as usize))
+            }
+        }
+    }
+}
 
 impl Bitset {
     pub fn is_empty(&self) -> bool {
@@ -52,7 +70,7 @@ impl Bitset {
 
     /// Determines the cardinality of `self`; that is, the number of set
     /// bits in `self`.
-    pub fn count(&self) -> u64 {
+    pub fn len(&self) -> u64 {
         // Kernighan's way: count how many times we have to reset the least
         // significant 1-bit.
         let mut count = 0;
@@ -62,6 +80,12 @@ impl Bitset {
             x &= x - 1; // reset LS1B
         }
         count
+    }
+
+    pub fn tiles(&self) -> BitsetTiles {
+        BitsetTiles {
+            value: self.0 as i64,
+        }
     }
 
     pub fn contains(&self, tile: Tile) -> bool {
@@ -76,8 +100,8 @@ impl Bitset {
         self.0 ^= u64::from(tile)
     }
 
-    pub fn offset(&mut self, offset: Offset) {
-        self.0 = offset.apply(self.0)
+    pub fn offset(&self, offset: Offset) -> Self {
+        Self(offset.apply(self.0))
     }
 
     /// Modifies `self` in-place with the set union from
@@ -195,6 +219,14 @@ impl ShrAssign<usize> for Bitset {
     }
 }
 
+impl Not for Bitset {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        Bitset(!self.0)
+    }
+}
+
 impl Binary for Bitset {
     // Required method
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
@@ -219,9 +251,9 @@ mod test_bitset {
 
     #[test]
     fn test_count() {
-        assert_eq!(Bitset(0).count(), 0);
-        assert_eq!(Bitset(1).count(), 1);
-        assert_eq!(Bitset(255).count(), 8);
+        assert_eq!(Bitset(0).len(), 0);
+        assert_eq!(Bitset(1).len(), 1);
+        assert_eq!(Bitset(255).len(), 8);
     }
 
     #[test]
@@ -229,5 +261,11 @@ mod test_bitset {
         assert!(!Bitset(0).contains(Tile { rank: 0, file: 0 }));
         assert!(Bitset(1).contains(Tile { rank: 0, file: 0 }));
         assert!(Bitset(8).contains(Tile { rank: 0, file: 3 }));
+    }
+
+    #[test]
+    fn test_bitset_iterator() {
+        let mut iter = Bitset(0b101).tiles();
+        assert_eq!(iter.next(), Some(Tile::from_index(1)));
     }
 }

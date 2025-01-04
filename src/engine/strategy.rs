@@ -32,14 +32,14 @@ pub trait Strategy {
 
     /// Returns the current value of the board from the perspective of `color`.
     fn evaluate(&self, board: Board, color: Color) -> i32 {
-        (board
+        board
             .pieces_of(color)
             .iter()
-            .fold(0, |sum, piece| sum + self.value(piece))
+            .fold(0, |sum, (piece, _)| sum + self.value(piece))
             - board
                 .pieces_of(!color)
                 .iter()
-                .fold(0, |sum, piece| sum + self.value(piece)))
+                .fold(0, |sum, (piece, _)| sum + self.value(piece))
     }
 
     /// Prescribes a numerical value for each piece.

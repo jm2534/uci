@@ -5,20 +5,6 @@ use uci::{
     engine::Engine,
 };
 
-struct Scanner<'a> {
-    handle: io::StdinLock<'a>,
-    buf: String,
-}
-
-impl<'a> Scanner<'a> {
-    pub fn new(handle: io::StdinLock<'a>) -> Self {
-        Self {
-            handle,
-            buf: String::with_capacity(64),
-        }
-    }
-}
-
 fn main() -> Result<()> {
     let mut command_buffer = String::new();
     let stdin = io::stdin();

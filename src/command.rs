@@ -1,9 +1,6 @@
 use std::fmt::Display;
 
-use crate::game::{
-    board::Board,
-    moves::{Move, MoveParseError},
-};
+use crate::game::moves::{Move, MoveParseError};
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -55,7 +52,7 @@ impl Display for Command {
             Command::UciNewGame => "ucinewgame",
             Command::Debug(true) => "debug on",
             Command::Debug(false) => "debug off",
-            Command::Position(vec) => "position",
+            Command::Position(_) => "position",
             Command::IsReady => "isready",
             Command::Register => "register",
             Command::Go => "go",
@@ -119,34 +116,6 @@ impl TryFrom<&str> for Command {
         unrecognized(value)
     }
 }
-
-/// Provides common methods for scanning iterators
-// struct Scanner<T, S>
-// where
-//     S: Iterator<Item = T>,
-// {
-//     stream: S,
-// }
-
-// impl<T, S> Scanner<T, S>
-// where
-//     S: Iterator<Item = T>,
-//     T: std::cmp::Eq,
-// {
-//     fn multifind_vectored(&mut self, elements: Vec<T>) -> Option<T> {
-//         self.stream.find(|e| elements.contains(e))
-//     }
-// }
-
-// impl<T, S> Scanner<T, S>
-// where
-//     S: Iterator<Item = T>,
-//     T: std::cmp::Eq + std::hash::Hash,
-// {
-//     fn multifind(&mut self, elements: HashSet<T>) -> Option<T> {
-//         self.stream.find(|e| elements.contains(e))
-//     }
-// }
 
 #[cfg(test)]
 mod tests {
