@@ -1,5 +1,4 @@
 mod bitset;
-mod moveset;
 
 use std::{collections::HashSet, sync::LazyLock};
 
@@ -227,6 +226,23 @@ impl Board {
 
     fn generate_movesets(&self) {}
 
+    pub fn pawn_moveset(&self, color: Color, tile: Tile) -> Bitset {
+        let (pawns, direction, target_row) = match color {
+            Color::White => (self.white.pawns, Offset::North, Board::RANK_MASKS[3]),
+            Color::Black => (self.black.pawns, Offset::South, Board::RANK_MASKS[4]),
+        };
+
+        let empty = !self.occupancy;
+
+        // single push
+        let single = empty & pawns.offset(direction);
+
+        // double push
+        let double = empty & single.offset(direction) & target_row;
+
+        single | double
+    }
+
     pub fn pawn_movesets(&self, color: Color) -> Bitset {
         let (pawns, direction, target_row) = match color {
             Color::White => (self.white.pawns, Offset::North, Board::RANK_MASKS[3]),
@@ -261,6 +277,38 @@ impl Board {
         } else {
             None
         }
+    }
+
+    fn knight_moveset(&self, color: Color) -> Box<[Bitset; Bitset::MAX_LEN]> {
+        fn north_north_east(b: Bitset) -> Bitset {
+            (b << 17_u64) & !Board::FILE_MASKS[0]
+        }
+        fn north_east_east(b: Bitset) -> Bitset {
+            (b << 10_u64) & !(Board::FILE_MASKS[0] | Board::FILE_MASKS[1])
+        }
+        fn south_east_east(b: Bitset) -> Bitset {
+            (b >> 6_u64) & !(Board::FILE_MASKS[0] | Board::FILE_MASKS[1])
+        }
+        // fn south_south_east(b: Bitset) -> Bitset { (b >> 15_u64) & notAFile  }
+        // fn north_north_west(b: Bitset) -> Bitset { (b << 15_u64) & notHFile  }
+        // fn north_west_west(b: Bitset) -> Bitset { (b <<  6_u64) & notGHFile }
+        // fn south_west_west(b: Bitset) -> Bitset { (b >> 10_u64) & notGHFile }
+        // fn south_south_west(b: Bitset) -> Bitset { (b >> 17_u64) & notHFile  }
+
+        // fn north_north_east(b: Bitset) -> Bitset { (b & notHFile ) << 17 }
+        // fn north_east_east(b: Bitset) -> Bitset { (b & notGHFile) << 10 }
+        // fn south_east_east(b: Bitset) -> Bitset { (b & notGHFile) >>  6 }
+        // fn south_south_east(b: Bitset) -> Bitset { (b & notHFile ) >> 15 }
+        // fn north_north_west(b: Bitset) -> Bitset { (b & notAFile ) << 15 }
+        // fn north_west_west(b: Bitset) -> Bitset { (b & notABFile) <<  6 }
+        // fn south_west_west(b: Bitset) -> Bitset { (b & notABFile) >> 10 }
+        // fn south_south_west(b: Bitset) -> Bitset { (b & notAFile ) >> 17 }
+        let board = Bitset(u64::MAX);
+        let mut movesets = Box::new([Bitset(0); 64]);
+        for (i, tile) in board.tiles().enumerate() {
+            movesets[i] = Bitset(0);
+        }
+        movesets
     }
 
     /// Returns `true` if `tile` is occupied, and `false` otherwise.
@@ -333,8 +381,6 @@ impl Board {
     fn moveset(&self, color: Color) -> Bitset {
         Bitset(0)
     }
-
-    fn knight_moveset(&self, color: Color) {}
 }
 
 #[derive(Error, Debug)]
@@ -538,8 +584,22 @@ mod tests {
         let white = board.pawn_movesets(Color::White);
         assert_eq!(white, Bitset(0x00000000FFFF0000));
 
-        let white = board.pawn_movesets(Color::Black);
-        assert_eq!(white, Bitset(0x0000FFFF00000000));
+        let black = board.pawn_movesets(Color::Black);
+        assert_eq!(black, Bitset(0x0000FFFF00000000));
+    }
+
+    #[test]
+    fn test_knight_starting_moveset() {
+        let board = Board::new();
+        let white = board.knight_moveset(Color::White);
+        for (i, element) in white.iter().enumerate() {
+            let position = Tile::from(i);
+            for tile in element.tiles() {
+                let rank_diff = position.rank.abs_diff(tile.rank);
+                let file_diff = position.file.abs_diff(tile.file);
+                assert!((rank_diff == 1 && file_diff == 2) | (rank_diff == 2 && file_diff == 1));
+            }
+        }
     }
 
     #[test]

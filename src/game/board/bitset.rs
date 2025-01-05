@@ -4,8 +4,8 @@ use crate::game::tile::Tile;
 use std::{
     fmt::{Binary, Error, Formatter},
     ops::{
-        BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, ShlAssign, Shr,
-        ShrAssign,
+        BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Deref, Index, Not, Shl,
+        ShlAssign, Shr, ShrAssign,
     },
 };
 
@@ -56,7 +56,7 @@ impl Iterator for BitsetTiles {
             0 => None,
             x => {
                 let ls1b = x & -x; // isolate LS1B
-                self.value ^= ls1b;
+                self.value ^= ls1b; // clear LS1B
                 Some(Tile::from_index(ls1b as usize))
             }
         }
@@ -64,6 +64,9 @@ impl Iterator for BitsetTiles {
 }
 
 impl Bitset {
+    /// The maximum cardinality of a Bitset
+    pub const MAX_LEN: usize = 64;
+
     pub fn is_empty(&self) -> bool {
         self.0 == 0
     }
@@ -207,9 +210,25 @@ impl<T: Into<u64>> BitXorAssign<T> for Bitset {
     }
 }
 
+impl<T: Into<u64>> Shl<T> for Bitset {
+    type Output = Self;
+
+    fn shl(self, rhs: T) -> Self::Output {
+        Bitset(self.0 << rhs.into())
+    }
+}
+
 impl ShlAssign<usize> for Bitset {
     fn shl_assign(&mut self, rhs: usize) {
         *self = Self(self.0 << rhs)
+    }
+}
+
+impl<T: Into<u64>> Shr<T> for Bitset {
+    type Output = Self;
+
+    fn shr(self, rhs: T) -> Self::Output {
+        Bitset(self.0 >> rhs.into())
     }
 }
 
