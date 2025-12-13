@@ -1,12 +1,14 @@
 mod bitset;
-
-use std::{collections::HashSet, sync::LazyLock};
+mod fen;
+// mod occupants;
+pub use fen::ParseBoardError;
 
 use crate::game::{
     color::Color,
     piece::{Piece, PieceKind},
 };
 use bitset::{Bitset, Offset};
+use std::{collections::HashSet, sync::LazyLock};
 use thiserror::Error;
 
 use super::{
@@ -91,11 +93,68 @@ impl IntoIterator for Placement {
     }
 }
 
+#[derive(Debug, Clone, Hash, Copy, PartialEq, Eq)]
+pub struct CastlingRights {
+    white_king_side: bool,
+    white_queen_side: bool,
+    black_king_side: bool,
+    black_queen_side: bool,
+}
+
+impl CastlingRights {
+    pub fn with_all() -> Self {
+        Self {
+            white_king_side: true,
+            white_queen_side: true,
+            black_king_side: true,
+            black_queen_side: true,
+        }
+    }
+
+    pub fn with_none() -> Self {
+        Self {
+            white_king_side: false,
+            white_queen_side: false,
+            black_king_side: false,
+            black_queen_side: false,
+        }
+    }
+
+    /// Whether no castling rights are present.
+    pub fn none(&self) -> bool {
+        !self.any()
+    }
+
+    /// Whether any castling rights are present.
+    pub fn any(&self) -> bool {
+        self.white_king_side
+            || self.white_queen_side
+            || self.black_king_side
+            || self.black_queen_side
+    }
+
+    /// Whether all castling rights are present.
+    pub fn all(&self) -> bool {
+        self.white_king_side
+            && self.white_queen_side
+            && self.black_king_side
+            && self.black_queen_side
+    }
+}
+
+impl Default for CastlingRights {
+    fn default() -> Self {
+        Self::with_all()
+    }
+}
+
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub struct Board {
     occupancy: Bitset,
     white: Placement,
     black: Placement,
+    to_move: Color,
+    castling_rights: CastlingRights,
 }
 
 impl Board {
@@ -123,28 +182,32 @@ impl Board {
         Bitset(0x0808080808080808),
     ];
 
-    /// Creates a board in the default starting position
+    /// Creates a board in the default starting position.
     pub fn new() -> Self {
         let white = Placement::new(Color::White);
         let black = Placement::new(Color::Black);
-        let occupancy = (Bitset::union(white.into_iter().map(|(_, set)| set))
-            | Bitset::union(black.into_iter().map(|(_, set)| set)));
+        let occupancy = Bitset::union(white.into_iter().map(|(_, set)| set))
+            | Bitset::union(black.into_iter().map(|(_, set)| set));
 
         let board = Self {
             white,
             black,
             occupancy,
+            to_move: Color::White,
+            castling_rights: CastlingRights::default(),
         };
         board.generate_movesets();
         board
     }
 
-    /// Creates an empty board, i.e. one with no pieces placed
+    /// Creates an empty board, i.e. one with no pieces placed and white to move.
     pub fn empty() -> Self {
         Board {
             white: Placement::empty(),
             black: Placement::empty(),
             occupancy: Bitset(0),
+            to_move: Color::White,
+            castling_rights: CastlingRights::default(),
         }
     }
 
@@ -383,49 +446,50 @@ impl Board {
     }
 }
 
-#[derive(Error, Debug)]
-pub enum ParseBoardError {
-    #[error("Unrecognized fenstring character `{0}`")]
-    Unrecognized(char),
+impl Default for Board {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TryFrom<&str> for Board {
     type Error = ParseBoardError;
 
+    /// Parses a FEN (Forsyth-Edwards Notation) string into a Board.
+    ///
+    /// # FEN String Format
+    ///
+    /// A complete FEN string contains 6 space-separated fields:
+    /// 1. **Piece placement** (from white's perspective, rank 8 to rank 1)
+    /// 2. **Active color** - "w" (white) or "b" (black)
+    /// 3. **Castling availability** - "KQkq" or "-" (K=white kingside, Q=white queenside, k=black kingside, q=black queenside)
+    /// 4. **En passant target square** - algebraic notation or "-" if none
+    /// 5. **Halfmove clock** - number of halfmoves since last capture or pawn advance (for 50-move rule)
+    /// 6. **Fullmove number** - starts at 1, increments after black's move
+    ///
+    /// ## Piece Placement (Field 1)
+    ///
+    /// Describes the board from rank 8 (black's back rank) to rank 1 (white's back rank).
+    /// - Ranks are separated by "/"
+    /// - Each rank is described left to right (file a to file h)
+    /// - Pieces are identified by letters:
+    ///   - Uppercase = White pieces: K (king), Q (queen), R (rook), B (bishop), N (knight), P (pawn)
+    ///   - Lowercase = Black pieces: k, q, r, b, n, p
+    /// - Empty squares are indicated by digits 1-8 (count of consecutive empty squares)
+    ///
+    /// ## Examples
+    ///
+    /// Starting position:
+    /// ```text
+    /// rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
+    /// ```
+    ///
+    /// After 1.e4:
+    /// ```text
+    /// rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1
+    /// ```
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let mut rank = 7;
-        let mut file = 0;
-        let mut board = Board::empty();
-
-        for ch in value.split_whitespace().next().unwrap().chars() {
-            if rank < 0 {
-                break;
-            }
-            let tile = Tile { rank, file };
-            let mut spaces = 1; // number of files to step this iteration
-            match ch {
-                '/' => {
-                    // next row
-                    rank -= 1;
-                    file = 0;
-                    spaces = 0;
-                }
-                new_spaces @ '1'..='8' => spaces = new_spaces.to_digit(10).unwrap() as usize,
-                ch => match Piece::try_from(ch) {
-                    Ok(piece) => board.place_unchecked(piece, tile),
-                    Err(_) => todo!(),
-                },
-            };
-
-            file += spaces;
-        }
-        Ok(board)
-    }
-}
-
-impl Default for Board {
-    fn default() -> Self {
-        Self::new()
+        fen::parse(value)
     }
 }
 
@@ -433,15 +497,14 @@ impl Default for Board {
 mod tests {
     use super::Board;
     use crate::game::color::Color;
-    use crate::game::moves::Move;
+
     use crate::{
         game::board::{
-            bitset::{Bitset, Offset},
             Tile,
+            bitset::{Bitset, Offset},
         },
         game::piece::{Piece, PieceKind},
     };
-    use anyhow::Result;
     use std::{collections::HashSet, convert::*};
 
     fn correct_starting_piece(tile: Tile) -> Option<Piece> {
@@ -466,28 +529,6 @@ mod tests {
             return Some(Piece { kind, color });
         }
         None
-    }
-
-    #[test]
-    fn test_startpos_fenstring() -> Result<()> {
-        let fenstring = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-        let board = Board::try_from(fenstring)?;
-        assert_eq!(board, Board::new());
-        Ok(())
-    }
-
-    #[test]
-    fn test_inprogress_fenstring() -> Result<()> {
-        let mut actual = Board::new();
-        let fenstring = "rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2";
-        let board = Board::try_from(fenstring)?;
-
-        actual.try_move(Move::try_from("e2e4")?)?;
-        actual.try_move(Move::try_from("c7c5")?)?;
-        actual.try_move(Move::try_from("g1f3")?)?;
-
-        assert_eq!(board, actual);
-        Ok(())
     }
 
     #[test]
@@ -551,8 +592,8 @@ mod tests {
         for row in 0..2 {
             for col in 0..Board::MAX_DIM {
                 let start = Tile {
-                    rank: row as usize,
-                    file: col as usize,
+                    rank: row,
+                    file: col,
                 };
                 let occupant = board.occupant(start);
 
