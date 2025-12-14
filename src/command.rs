@@ -120,7 +120,7 @@ impl TryFrom<&str> for Command {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::tile::Tile;
+    use crate::game::board::tile::Tile;
 
     #[test]
     fn test_debug_on() {
@@ -140,8 +140,8 @@ mod tests {
         assert_eq!(
             result.unwrap(),
             Command::Position(vec![Move {
-                start: Tile { file: 4, rank: 1 },
-                stop: Tile { file: 4, rank: 3 }
+                start: Tile::new(4, 1),
+                stop: Tile::new(4, 3)
             }])
         )
     }
@@ -153,12 +153,12 @@ mod tests {
             result.unwrap(),
             Command::Position(vec![
                 Move {
-                    start: Tile { file: 4, rank: 1 },
-                    stop: Tile { file: 4, rank: 3 }
+                    start: Tile::new(4, 1),
+                    stop: Tile::new(4, 3)
                 },
                 Move {
-                    start: Tile { file: 4, rank: 6 },
-                    stop: Tile { file: 4, rank: 4 }
+                    start: Tile::new(4, 6),
+                    stop: Tile::new(4, 4)
                 },
             ])
         )

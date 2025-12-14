@@ -1,6 +1,6 @@
 /// Fun typestate implementation for parsing a FEN string into a board state.
 use crate::game::{
-    board::{self, Board, Tile},
+    board::{self, Board, tile::Tile},
     piece::{ParsePieceError, Piece},
 };
 use std::{
@@ -150,7 +150,7 @@ impl<'a> FenParser<'a, PiecePlacement> {
                 new_spaces @ '1'..='8' => spaces = new_spaces.to_digit(10).unwrap() as u8,
                 ch => {
                     let piece = Piece::try_from(ch)?;
-                    let tile = Tile { rank, file };
+                    let tile = Tile::new(rank, file);
                     self.board.place_unchecked(piece, tile);
                 }
             }

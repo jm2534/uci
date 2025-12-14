@@ -4,8 +4,8 @@ use regex::Regex;
 use thiserror::Error;
 
 use super::{
+    board::tile::{Tile, TileParseError},
     piece::Piece,
-    tile::{Tile, TileParseError},
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -22,7 +22,7 @@ pub enum MoveKind {
     /// Queen-side castle
     QueenCastle,
 
-    /// A move resulting in the capture of the contained piece    
+    /// A move resulting in the capture of the contained piece
     Capture(Piece),
 
     /// A capture accomplished through enpassant
@@ -108,8 +108,8 @@ mod tests {
         assert_eq!(
             Move::try_from(value)?,
             Move {
-                start: Tile { file: 0, rank: 1 },
-                stop: Tile { file: 0, rank: 2 }
+                start: Tile::new(0, 1),
+                stop: Tile::new(0, 2)
             }
         );
         Ok(())
@@ -122,8 +122,8 @@ mod tests {
         assert_eq!(
             Move::try_from(value)?,
             Move {
-                start: Tile { file: 1, rank: 0 },
-                stop: Tile { file: 1, rank: 1 }
+                start: Tile::new(1, 0),
+                stop: Tile::new(1, 1)
             }
         );
         Ok(())
@@ -136,8 +136,8 @@ mod tests {
         assert_eq!(
             Move::try_from(value)?,
             Move {
-                start: Tile { file: 0, rank: 0 },
-                stop: Tile { file: 0, rank: 0 }
+                start: Tile::new(0, 0),
+                stop: Tile::new(0, 0)
             }
         );
         Ok(())
@@ -150,8 +150,8 @@ mod tests {
         assert_eq!(
             Move::try_from(value)?,
             Move {
-                start: Tile { file: 4, rank: 1 },
-                stop: Tile { file: 4, rank: 3 }
+                start: Tile::new(4, 1),
+                stop: Tile::new(4, 3)
             }
         );
         Ok(())
@@ -164,8 +164,8 @@ mod tests {
         assert_eq!(
             Move::try_from(value)?,
             Move {
-                start: Tile { file: 4, rank: 0 },
-                stop: Tile { file: 6, rank: 0 }
+                start: Tile::new(4, 0),
+                stop: Tile::new(6, 0)
             }
         );
         Ok(())

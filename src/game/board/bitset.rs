@@ -1,6 +1,4 @@
 use enum_iterator::Sequence;
-
-use crate::game::tile::Tile;
 use std::{
     fmt::{Binary, Error, Formatter},
     ops::{
@@ -8,6 +6,8 @@ use std::{
         ShlAssign, Shr, ShrAssign,
     },
 };
+
+use crate::game::board::tile::{Tile, Tiles};
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, Sequence)]
 pub(super) enum Offset {
@@ -41,27 +41,8 @@ impl Offset {
     }
 }
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Bitset(pub u64);
-
-pub struct BitsetTiles {
-    value: i64,
-}
-
-impl Iterator for BitsetTiles {
-    type Item = Tile;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.value {
-            0 => None,
-            x => {
-                let ls1b = x & -x; // isolate LS1B
-                self.value ^= ls1b; // clear LS1B
-                Some(Tile::from_index(ls1b as usize))
-            }
-        }
-    }
-}
 
 impl Bitset {
     /// The maximum cardinality of a Bitset
@@ -73,34 +54,24 @@ impl Bitset {
 
     /// Determines the cardinality of `self`; that is, the number of set
     /// bits in `self`.
-    pub fn len(&self) -> u64 {
-        // Kernighan's way: count how many times we have to reset the least
-        // significant 1-bit.
-        let mut count = 0;
-        let mut x = self.0;
-        while x != 0 {
-            count += 1;
-            x &= x - 1; // reset LS1B
-        }
-        count
+    pub fn len(&self) -> u32 {
+        self.0.count_ones() as u32
     }
 
-    pub fn tiles(&self) -> BitsetTiles {
-        BitsetTiles {
-            value: self.0 as i64,
-        }
+    pub fn tiles(&self) -> Tiles {
+        Tiles::new(*self)
     }
 
-    pub fn contains(&self, tile: Tile) -> bool {
-        !(*self & tile).is_empty()
+    pub fn contains(&self, other: impl Into<Self>) -> bool {
+        !(*self & other.into()).is_empty()
     }
 
-    pub fn insert(&mut self, tile: Tile) {
-        self.0 |= u64::from(tile)
+    pub fn insert(&mut self, other: impl Into<Self>) {
+        self.0 |= other.into().0
     }
 
-    pub fn toggle(&mut self, tile: Tile) {
-        self.0 ^= u64::from(tile)
+    pub fn toggle(&mut self, other: impl Into<Self>) {
+        self.0 ^= other.into().0
     }
 
     pub fn offset(&self, offset: Offset) -> Self {
@@ -144,6 +115,12 @@ impl Bitset {
     }
 }
 
+impl From<Tile> for Bitset {
+    fn from(tile: Tile) -> Self {
+        tile.as_bitset()
+    }
+}
+
 impl From<Bitset> for bool {
     fn from(value: Bitset) -> Self {
         value.0 > 0
@@ -159,12 +136,6 @@ impl From<Bitset> for u64 {
 impl From<u64> for Bitset {
     fn from(value: u64) -> Self {
         Bitset(value)
-    }
-}
-
-impl From<Tile> for Bitset {
-    fn from(value: Tile) -> Self {
-        Bitset(value.into())
     }
 }
 
@@ -218,9 +189,9 @@ impl<T: Into<u64>> Shl<T> for Bitset {
     }
 }
 
-impl ShlAssign<usize> for Bitset {
-    fn shl_assign(&mut self, rhs: usize) {
-        *self = Self(self.0 << rhs)
+impl<T: Into<u64>> ShlAssign<T> for Bitset {
+    fn shl_assign(&mut self, rhs: T) {
+        *self = Self(self.0 << rhs.into());
     }
 }
 
@@ -232,9 +203,9 @@ impl<T: Into<u64>> Shr<T> for Bitset {
     }
 }
 
-impl ShrAssign<usize> for Bitset {
-    fn shr_assign(&mut self, rhs: usize) {
-        *self = Self(self.0 >> rhs)
+impl<T: Into<u64>> ShrAssign<T> for Bitset {
+    fn shr_assign(&mut self, rhs: T) {
+        *self = Self(self.0 >> rhs.into());
     }
 }
 
@@ -277,14 +248,8 @@ mod test_bitset {
 
     #[test]
     fn test_contains() {
-        assert!(!Bitset(0).contains(Tile { rank: 0, file: 0 }));
-        assert!(Bitset(1).contains(Tile { rank: 0, file: 0 }));
-        assert!(Bitset(8).contains(Tile { rank: 0, file: 3 }));
-    }
-
-    #[test]
-    fn test_bitset_iterator() {
-        let mut iter = Bitset(0b101).tiles();
-        assert_eq!(iter.next(), Some(Tile::from_index(1)));
+        assert!(!Bitset(0).contains(Bitset(1)));
+        assert!(Bitset(1).contains(Bitset(1)));
+        assert!(Bitset(8).contains(Bitset(8)));
     }
 }
