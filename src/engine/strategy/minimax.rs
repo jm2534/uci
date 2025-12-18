@@ -36,15 +36,14 @@ impl std::cmp::PartialOrd for ScoredMove {
 impl Minimax {
     /// Returns the maximum utility value and associated move for `self.player`
     /// given `board` and the search parameters `alpha` and `beta`.
-    fn maxvalue(&self, board: Board, mut alpha: isize, beta: isize) -> ScoredMove {
+    fn maxvalue(&self, mut board: Board, mut alpha: isize, beta: isize) -> ScoredMove {
         let mut result = ScoredMove {
             score: isize::MIN,
             attempt: None,
         };
-        let mut board = board.clone();
-        for action in self.order(board, self.player) {
+        for action in self.order(&board, self.player) {
             board.try_move(action).unwrap();
-            result = std::cmp::max(result, self.minvalue(board, alpha, beta));
+            result = std::cmp::max(result, self.minvalue(board.to_owned(), alpha, beta));
             if result.score >= beta {
                 return result;
             }
@@ -55,15 +54,14 @@ impl Minimax {
 
     /// Returns the minimum utility value and associated move for `self.player`
     /// given `board` and the search parameters `alpha` and `beta`.
-    fn minvalue(&self, board: Board, alpha: isize, mut beta: isize) -> ScoredMove {
+    fn minvalue(&self, mut board: Board, alpha: isize, mut beta: isize) -> ScoredMove {
         let mut result = ScoredMove {
             score: isize::MAX,
             attempt: None,
         };
-        let mut board = board.clone();
-        for action in self.order(board, !self.player) {
+        for action in self.order(&board, !self.player) {
             board.try_move(action).unwrap();
-            result = std::cmp::min(result, self.maxvalue(board, alpha, beta));
+            result = std::cmp::min(result, self.maxvalue(board.to_owned(), alpha, beta));
             if result.score <= alpha {
                 return result;
             }
@@ -74,8 +72,8 @@ impl Minimax {
 }
 
 impl Strategy for Minimax {
-    fn step(&mut self, board: Board) -> Move {
-        let movement = self.maxvalue(board, isize::MIN, isize::MAX);
+    fn step(&mut self, board: &mut Board) -> Move {
+        let movement = self.maxvalue(board.to_owned(), isize::MIN, isize::MAX);
         movement.attempt.expect("Game is already over")
     }
 }

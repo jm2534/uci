@@ -10,7 +10,7 @@ pub mod minimax;
 pub trait Strategy {
     /// By default, lists the  moves available to `color` on the current `board`
     /// ordered by the results of `Strategy::evaluate` called on each position.
-    fn order(&self, board: Board, color: Color) -> Vec<Move> {
+    fn order(&self, board: &Board, color: Color) -> Vec<Move> {
         // let captures = board.possible_captures(color);
 
         // let eval = |movement: &Move| {
@@ -54,5 +54,5 @@ pub trait Strategy {
         }
     }
 
-    fn step(&mut self, board: Board) -> Move;
+    fn step(&mut self, board: &mut Board) -> Move;
 }

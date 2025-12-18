@@ -1,6 +1,9 @@
 use std::fmt::Display;
 
-use crate::game::moves::{Move, MoveParseError};
+use crate::game::{
+    board::Board,
+    moves::{Move, MoveParseError},
+};
 use thiserror::Error;
 
 #[derive(Debug)]

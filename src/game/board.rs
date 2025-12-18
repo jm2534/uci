@@ -149,7 +149,7 @@ impl Default for CastlingRights {
 /// Core representation of a chess board.
 ///
 /// Implements efficient methods for manipulating and querying the board state.
-#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct Board {
     /// Player's piece-wise positions
     positions: Position,
@@ -168,8 +168,8 @@ pub struct Board {
 }
 
 impl Board {
-    const MAX_DIM: u8 = 8;
-    const MIN_DIM: u8 = 0;
+    pub const MAX_DIM: u8 = 8;
+    pub const MIN_DIM: u8 = 0;
     const RANK_MASKS: [Bitset; Self::MAX_DIM as usize] = [
         Bitset(0x00000000000000FF),
         Bitset(0x000000000000FF00),
@@ -260,6 +260,10 @@ impl Board {
                 nodes
             }
         }
+    }
+
+    pub fn occupants(&self) -> &[Option<Piece>; 64] {
+        &self.occupants
     }
 
     /// The color of the player whose turn it is to move.
