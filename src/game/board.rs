@@ -182,12 +182,12 @@ impl Board {
     const FILE_MASKS: [Bitset; Self::MAX_DIM as usize] = [
         Bitset(0x0101010101010101),
         Bitset(0x0202020202020202),
-        Bitset(0x0303030303030303),
         Bitset(0x0404040404040404),
-        Bitset(0x0505050505050505),
-        Bitset(0x0606060606060606),
-        Bitset(0x0707070707070707),
         Bitset(0x0808080808080808),
+        Bitset(0x1010101010101010),
+        Bitset(0x2020202020202020),
+        Bitset(0x4040404040404040),
+        Bitset(0x8080808080808080),
     ];
 
     /// Creates a board in the default starting position.

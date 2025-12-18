@@ -48,6 +48,11 @@ impl Bitset {
     /// The maximum cardinality of a Bitset
     pub const MAX_LEN: usize = 64;
 
+    /// Creates an empty Bitset
+    pub const fn empty() -> Self {
+        Self(0)
+    }
+
     pub fn is_empty(&self) -> bool {
         self.0 == 0
     }

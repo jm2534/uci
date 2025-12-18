@@ -57,12 +57,12 @@ impl Board {
 const fn generate_pawn_attacks_table() -> [[Bitset; 64]; 2] {
     let mut table = [[Bitset(0); 64]; 2];
 
-    let mut square = 0;
-    while square < 64 {
-        let tile = Tile::from_index(square);
-        table[Color::Black as usize][square] = generate_black_pawn_attacks(tile);
-        table[Color::White as usize][square] = generate_white_pawn_attacks(tile);
-        square += 1;
+    let mut i = 0;
+    while i < 64 {
+        let tile = Tile::from_index(i);
+        table[Color::Black as usize][i] = generate_black_pawn_attacks(tile);
+        table[Color::White as usize][i] = generate_white_pawn_attacks(tile);
+        i += 1;
     }
 
     table
@@ -106,11 +106,38 @@ mod attack_tests {
     }
 
     #[test]
-    fn test_white_pawn_edge_attacks() {
+    fn test_white_pawn_file_edge_attack() {
         // white pawn on a4 should attack b5
         let index = Tile::try_from("a4").unwrap().as_index();
         let attacks = PAWN_ATTACKS[Color::White as usize][index];
         let expected = Tile::try_from("b5").unwrap().as_bitset();
+        assert_eq!(attacks, expected);
+    }
+
+    #[test]
+    fn test_black_pawn_file_edge_attack() {
+        // black pawn on a5 should attack b4
+        let index = Tile::try_from("a5").unwrap().as_index();
+        let attacks = PAWN_ATTACKS[Color::Black as usize][index];
+        let expected = Tile::try_from("b4").unwrap().as_bitset();
+        assert_eq!(attacks, expected);
+    }
+
+    #[test]
+    fn test_white_pawn_rank_edge_attacks() {
+        // white pawn on last rank should not attack
+        let index = Tile::try_from("h8").unwrap().as_index();
+        let attacks = PAWN_ATTACKS[Color::White as usize][index];
+        let expected = Bitset(0);
+        assert_eq!(attacks, expected);
+    }
+
+    #[test]
+    fn test_black_pawn_rank_edge_attacks() {
+        // black pawn on a5 should attack b4
+        let index = Tile::try_from("a1").unwrap().as_index();
+        let attacks = PAWN_ATTACKS[Color::Black as usize][index];
+        let expected = Bitset(0);
         assert_eq!(attacks, expected);
     }
 }

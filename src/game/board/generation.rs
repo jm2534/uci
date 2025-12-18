@@ -9,7 +9,6 @@ mod knight;
 mod pawn;
 mod queen;
 mod rook;
-mod tables;
 
 use super::{Bitset, Board};
 use crate::game::{board::tile::Tile, piece::PieceKind};
