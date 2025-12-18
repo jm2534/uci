@@ -59,31 +59,31 @@ impl Tile {
     /// let tile = Tile::from_index(63);
     /// assert_eq!(tile.as_index(), 63); // h8
     /// ```
-    pub fn from_index(index: usize) -> Self {
+    pub const fn from_index(index: usize) -> Self {
         Self(Bitset(1 << index))
     }
 
     /// Returns the representation of the tile as an index, meaning the
     /// zero-indexed position of the tile in the flattened board (thus in
     /// the range `[0, 63]`).
-    pub fn as_index(&self) -> usize {
+    pub const fn as_index(&self) -> usize {
         self.0.0.trailing_zeros() as usize
     }
 
     /// Returns the representation of the tile as a bitset.
-    pub fn as_bitset(&self) -> Bitset {
+    pub const fn as_bitset(&self) -> Bitset {
         self.0
     }
 
     /// Returns the rank of the tile, meaning the zero-indexed row of the
     /// tile in the board (thus in the range `[0, 7]`).
-    pub fn rank(&self) -> u8 {
+    pub const fn rank(&self) -> u8 {
         (self.as_index() >> 3) as u8
     }
 
     /// Returns the file of the tile, meaning the zero-indexed column of the
     /// tile in the board (thus in the range `[0, 7]`).
-    pub fn file(&self) -> u8 {
+    pub const fn file(&self) -> u8 {
         (self.as_index() & 7) as u8
     }
 

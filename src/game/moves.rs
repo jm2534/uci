@@ -43,7 +43,6 @@ pub enum MoveKind {
 /// bit 12-13: promotion piece type - 2 (from KNIGHT-2 to QUEEN-2)
 /// bit 14-15: special move flag: promotion (1), en passant (2), castling (3)
 /// NOTE: EN-PASSANT bit is set only when a pawn can be captured
-///
 #[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Move(u16);
 

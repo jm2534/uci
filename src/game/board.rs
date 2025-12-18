@@ -1,5 +1,6 @@
 mod bitset;
 mod fen;
+mod generation;
 mod occupants;
 pub mod tile;
 pub use fen::ParseBoardError;
@@ -18,13 +19,6 @@ use thiserror::Error;
 
 use super::moves::{Move, MoveKind};
 use tile::Tile;
-
-static MOVESETS: LazyLock<Vec<Bitset>> = LazyLock::new(|| generate_movesets());
-
-pub(crate) fn generate_movesets() -> Vec<Bitset> {
-    let _ = Board::new();
-    vec![]
-}
 
 #[derive(Error, Copy, Clone, PartialEq, Eq, Debug)]
 pub enum MoveError {
@@ -275,12 +269,19 @@ impl Board {
         self.castling_rights
     }
 
-    pub fn possible_captures(&self, color: Color) -> Bitset {
-        todo!()
-    }
-
     pub fn possible_moves(&self, color: Color) -> HashSet<Move> {
-        HashSet::new()
+        let mut moves = HashSet::new(); // TODO: whether this makes sense
+        let color_occupancy = self.occupancy[color];
+        for piece_kind in enum_iterator::all::<PieceKind>() {
+            let pieces_of_type = self.positions[piece_kind] & color_occupancy;
+            for piece_tile in pieces_of_type.tiles() {
+                let move_targets = self.moves_from_tile(piece_tile, piece_kind);
+                for target_tile in move_targets.tiles() {
+                    moves.insert(Move::new(piece_tile, target_tile));
+                }
+            }
+        }
+        moves
     }
 
     pub fn pieces_of(&self, color: Color) -> Vec<(Piece, Tile)> {
@@ -303,62 +304,6 @@ impl Board {
         self.occupants[tile.as_index()] = Some(piece);
     }
 
-    fn generate_movesets(&self) {}
-
-    fn pawn_movesets(&self, color: Color) -> Bitset {
-        // match self.occupants[tile.as_index()] {
-        //     Some(Piece {
-        //         kind: PieceKind::Pawn,
-        //         color,
-        //     }) => {
-        //         // let color = piece.color;
-        //         let pawns = self.positions[PieceKind::Pawn];
-        //         let not_a = !Board::FILE_MASKS[0];
-        //         let not_h = !Board::FILE_MASKS[7];
-
-        //         let attacks = match color {
-        //             Color::White => (pawns.0 << 7 & not_h) | (pawns.0 << 9 & not_a),
-        //             Color::Black => (pawns.0 >> 7 & not_a) | (pawns.0 >> 9 & not_h),
-        //         };
-
-        //         // single and double pushes
-        //         let empty = !(self.occupancy[0] & self.occupancy[1]);
-        //         // let single = empty & pawns.offset(direction);
-        //         // let double = empty & single.offset(direction) & target_row;
-        //         // single | double
-
-        //         Some(Bitset(0))
-        //     }
-        //     _ => None,
-        // }
-        // let pawns = self.positions[PieceKind::Pawn];
-
-        // single and double pushes
-        // let empty = !self.occupancy;
-        // let single = empty & pawns.offset(direction);
-        // let double = empty & single.offset(direction) & target_row;
-        // single | double
-
-        Bitset(0)
-    }
-
-    pub fn occupant_moveset(&self, tile: Tile) -> Option<(Piece, Bitset)> {
-        // see https://www.chessprogramming.org/Efficient_Generation_of_Sliding_Piece_Attacks#Bitboard_Basics
-        if let Some(occupant) = self.occupant(tile) {
-            let moveset = match occupant.kind {
-                PieceKind::Pawn => self.pawn_movesets(occupant.color),
-                PieceKind::Rook => todo!(),
-                PieceKind::Bishop => todo!(),
-                PieceKind::Knight => todo!(),
-                PieceKind::Queen => todo!(),
-                PieceKind::King => todo!(),
-            };
-            Some((occupant, moveset))
-        } else {
-            None
-        }
-    }
-
     /// Returns `true` if `tile` is occupied, and `false` otherwise.
     pub fn occupied(&self, tile: Tile) -> bool {
         !((self.occupancy[0] | self.occupancy[1]) & tile).is_empty()
@@ -371,16 +316,7 @@ impl Board {
 
     /// Tries to make `attempt` on the given board, returning the kind of move (or error) that occurred.
     pub fn try_move(&mut self, attempt: Move) -> Result<MoveKind, MoveError> {
-        let mut kind = Err(MoveError::NonexistentPiece(attempt.start()));
-        if let Some((occupant, moveset)) = self.occupant_moveset(attempt.start()) {
-            if moveset.contains(attempt.stop()) {
-                todo!("Implement move logic")
-            } else {
-                // else move not in moveset
-                kind = Err(MoveError::IllegalMove(attempt));
-            }
-        }
-        kind
+        todo!()
     }
 
     /// Returns the winner of the current board, if any. Useful for checking
@@ -529,15 +465,5 @@ mod tests {
                 }
             }
         }
-    }
-
-    #[test]
-    fn test_pawn_starting_moveset() {
-        let board = Board::new();
-        let white = board.pawn_movesets(Color::White);
-        assert_eq!(white, Bitset(0x00000000FFFF0000));
-
-        let black = board.pawn_movesets(Color::Black);
-        assert_eq!(black, Bitset(0x0000FFFF00000000));
     }
 }

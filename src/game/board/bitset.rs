@@ -90,6 +90,10 @@ impl Bitset {
         self.0 &= other.0
     }
 
+    pub const fn lsb1_as_index(&self) -> usize {
+        self.0.trailing_zeros() as usize
+    }
+
     /// Creates a bitset with the least significant 1 bit of `other` as the
     /// only bit set.
     pub fn ls1b(other: Bitset) -> Bitset {
