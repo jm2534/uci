@@ -8,8 +8,12 @@ use crate::game::{
     color::Color,
     piece::{Piece, PieceKind},
 };
-use bitset::{Bitset, Offset};
-use std::{collections::HashSet, sync::LazyLock};
+use bitset::Bitset;
+use std::{
+    collections::HashSet,
+    ops::{Index, IndexMut},
+    sync::LazyLock,
+};
 use thiserror::Error;
 
 use super::moves::{Move, MoveKind};
@@ -31,62 +35,61 @@ pub enum MoveError {
     NonexistentPiece(Tile),
 }
 
+/// Piece-specific sets of positions on the board for both players.
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
-struct Placement {
-    pawns: Bitset,
-    bishops: Bitset,
-    rooks: Bitset,
-    knights: Bitset,
-    queens: Bitset,
-    king: Bitset,
-}
+struct Position([Bitset; 6]);
 
-impl Placement {
-    pub fn new(color: Color) -> Self {
-        match color {
-            Color::White => Self {
-                pawns: Bitset(0xFF << 8),
-                bishops: Tile::new(0, 2) | Tile::new(0, 5),
-                rooks: Tile::new(0, 0) | Tile::new(0, 7),
-                knights: Tile::new(0, 1) | Tile::new(0, 6),
-                queens: Bitset::from(Tile::new(0, 3)),
-                king: Bitset::from(Tile::new(0, 4)),
-            },
-            Color::Black => Self {
-                pawns: Bitset(0xFF << 48),
-                bishops: Tile::new(7, 2) | Tile::new(7, 5),
-                rooks: Tile::new(7, 0) | Tile::new(7, 7),
-                knights: Tile::new(7, 1) | Tile::new(7, 6),
-                queens: Bitset::from(Tile::new(7, 3)),
-                king: Bitset::from(Tile::new(7, 4)),
-            },
-        }
+impl Position {
+    /// Standard starting positions.
+    pub fn new() -> Self {
+        Self([
+            // pawns
+            Bitset(0xFF << 8) | Bitset(0xFF << 48),
+            // knights
+            Tile::new(0, 1) | Tile::new(0, 6) | Tile::new(7, 1) | Tile::new(7, 6),
+            // bishops
+            Tile::new(0, 2) | Tile::new(0, 5) | Tile::new(7, 2) | Tile::new(7, 5),
+            // rooks
+            Tile::new(0, 0) | Tile::new(0, 7) | Tile::new(7, 0) | Tile::new(7, 7),
+            // queens
+            Tile::new(0, 3) | Tile::new(7, 3),
+            // kings
+            Tile::new(0, 4) | Tile::new(7, 4),
+        ])
     }
 
+    /// An instance with no pieces placed.
     pub fn empty() -> Self {
-        Self {
-            pawns: Bitset(0),
-            bishops: Bitset(0),
-            rooks: Bitset(0),
-            knights: Bitset(0),
-            queens: Bitset(0),
-            king: Bitset(0),
-        }
+        Self([Bitset(0); 6])
     }
 }
 
-impl IntoIterator for Placement {
+impl Index<PieceKind> for Position {
+    type Output = Bitset;
+
+    fn index(&self, index: PieceKind) -> &Self::Output {
+        &self.0[index as usize]
+    }
+}
+
+impl IndexMut<PieceKind> for Position {
+    fn index_mut(&mut self, index: PieceKind) -> &mut Self::Output {
+        &mut self.0[index as usize]
+    }
+}
+
+impl IntoIterator for Position {
     type Item = (PieceKind, Bitset);
     type IntoIter = std::array::IntoIter<Self::Item, 6>;
 
     fn into_iter(self) -> Self::IntoIter {
         let values = [
-            (PieceKind::Pawn, self.pawns),
-            (PieceKind::Bishop, self.bishops),
-            (PieceKind::Rook, self.rooks),
-            (PieceKind::Knight, self.knights),
-            (PieceKind::Queen, self.queens),
-            (PieceKind::King, self.king),
+            (PieceKind::Pawn, self[PieceKind::Pawn]),
+            (PieceKind::Bishop, self[PieceKind::Bishop]),
+            (PieceKind::Rook, self[PieceKind::Rook]),
+            (PieceKind::Knight, self[PieceKind::Knight]),
+            (PieceKind::Queen, self[PieceKind::Queen]),
+            (PieceKind::King, self[PieceKind::King]),
         ];
         values.into_iter()
     }
@@ -147,13 +150,24 @@ impl Default for CastlingRights {
     }
 }
 
+/// Core representation of a chess board.
+///
+/// Implements efficient methods for manipulating and querying the board state.
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub struct Board {
-    white: Placement,
-    black: Placement,
-    to_move: Color,
-    occupancy: Bitset,
+    /// Player's piece-wise positions
+    positions: Position,
+
+    /// Player occupancy
+    occupancy: [Bitset; 2],
+
+    // "Mailbox" of piece positions
     occupants: [Option<Piece>; 64],
+
+    /// Player to move
+    to_move: Color,
+
+    /// Player's castling rights
     castling_rights: CastlingRights,
 }
 
@@ -184,30 +198,49 @@ impl Board {
 
     /// Creates a board in the default starting position.
     pub fn new() -> Self {
-        let white = Placement::new(Color::White);
-        let black = Placement::new(Color::Black);
-        let occupancy = Bitset::union(white.into_iter().map(|(_, set)| set))
-            | Bitset::union(black.into_iter().map(|(_, set)| set));
+        // core bitboards
+        let positions = Position::new();
+
+        // populate mailbox from bitboards
+        let mut occupants = [None; 64];
+        for (kind, bitset) in positions {
+            for tile in bitset.tiles() {
+                occupants[tile.as_index()] = Some(Piece {
+                    kind,
+                    color: Color::White,
+                });
+            }
+        }
+        for (kind, bitset) in positions {
+            for tile in bitset.tiles() {
+                occupants[tile.as_index()] = Some(Piece {
+                    kind,
+                    color: Color::Black,
+                });
+            }
+        }
+
+        // occupancy masks
+        let white = Board::RANK_MASKS[0] | Board::RANK_MASKS[1];
+        let black = Board::RANK_MASKS[6] | Board::RANK_MASKS[7];
 
         let board = Self {
-            white,
-            black,
-            occupancy,
-            occupants: [None; 64], // TODO: must implement
+            occupants,
+            occupancy: [black, white],
+            positions: positions,
             to_move: Color::White,
             castling_rights: CastlingRights::default(),
         };
-        board.generate_movesets();
+
         board
     }
 
     /// Creates an empty board, i.e. one with no pieces placed and white to move.
     pub fn empty() -> Self {
         Board {
-            white: Placement::empty(),
-            black: Placement::empty(),
             occupants: [None; 64],
-            occupancy: Bitset(0),
+            occupancy: [Bitset(0), Bitset(0)],
+            positions: Position::empty(),
             to_move: Color::White,
             castling_rights: CastlingRights::default(),
         }
@@ -232,15 +265,17 @@ impl Board {
         }
     }
 
+    /// The color of the player whose turn it is to move.
     pub fn to_move(&self) -> Color {
         self.to_move
     }
 
+    /// The current castling rights of the players
     pub fn castling_rights(&self) -> CastlingRights {
         self.castling_rights
     }
 
-    pub fn possible_captures(&self, color: Color) -> HashSet<Move> {
+    pub fn possible_captures(&self, color: Color) -> Bitset {
         todo!()
     }
 
@@ -249,59 +284,65 @@ impl Board {
     }
 
     pub fn pieces_of(&self, color: Color) -> Vec<(Piece, Tile)> {
-        let placement = match color {
-            Color::White => self.white,
-            Color::Black => self.black,
-        };
         let mut pieces = Vec::with_capacity(64);
-        for (kind, set) in placement {
-            for tile in set.tiles() {
+        let player_occupancy = self.occupancy[color];
+        for (kind, set) in self.positions {
+            let player_set = set & player_occupancy;
+            for tile in player_set.tiles() {
                 pieces.push((Piece { kind, color }, tile))
             }
         }
         pieces
     }
 
-    fn set_of(&mut self, piece: Piece) -> &mut Bitset {
-        match (piece.kind, piece.color) {
-            (PieceKind::Pawn, Color::White) => &mut self.white.pawns,
-            (PieceKind::Pawn, Color::Black) => &mut self.black.pawns,
-            (PieceKind::Rook, Color::White) => &mut self.white.rooks,
-            (PieceKind::Rook, Color::Black) => &mut self.black.rooks,
-            (PieceKind::Bishop, Color::White) => &mut self.white.bishops,
-            (PieceKind::Bishop, Color::Black) => &mut self.black.bishops,
-            (PieceKind::Knight, Color::White) => &mut self.white.knights,
-            (PieceKind::Knight, Color::Black) => &mut self.black.knights,
-            (PieceKind::Queen, Color::White) => &mut self.white.queens,
-            (PieceKind::Queen, Color::Black) => &mut self.black.queens,
-            (PieceKind::King, Color::White) => &mut self.white.king,
-            (PieceKind::King, Color::Black) => &mut self.black.king,
-        }
-    }
-
     /// Places `piece` at `tile` without checking legality.
     fn place_unchecked(&mut self, piece: Piece, tile: Tile) {
-        let set = self.set_of(piece);
+        let set = &mut self.positions[piece.kind];
         *set |= tile;
-        self.occupancy |= tile;
-        self.occupants[tile.as_index()] = Some(piece); // TODO: need to clear old position
+        self.occupancy[piece.color] |= tile;
+        self.occupants[tile.as_index()] = Some(piece);
     }
 
     fn generate_movesets(&self) {}
 
-    pub fn pawn_movesets(&self, color: Color) -> Bitset {
-        let (pawns, direction, target_row) = match color {
-            Color::White => (self.white.pawns, Offset::North, Board::RANK_MASKS[3]),
-            Color::Black => (self.black.pawns, Offset::South, Board::RANK_MASKS[4]),
-        };
+    fn pawn_movesets(&self, color: Color) -> Bitset {
+        // match self.occupants[tile.as_index()] {
+        //     Some(Piece {
+        //         kind: PieceKind::Pawn,
+        //         color,
+        //     }) => {
+        //         // let color = piece.color;
+        //         let pawns = self.positions[PieceKind::Pawn];
+        //         let not_a = !Board::FILE_MASKS[0];
+        //         let not_h = !Board::FILE_MASKS[7];
+
+        //         let attacks = match color {
+        //             Color::White => (pawns.0 << 7 & not_h) | (pawns.0 << 9 & not_a),
+        //             Color::Black => (pawns.0 >> 7 & not_a) | (pawns.0 >> 9 & not_h),
+        //         };
+
+        //         // single and double pushes
+        //         let empty = !(self.occupancy[0] & self.occupancy[1]);
+        //         // let single = empty & pawns.offset(direction);
+        //         // let double = empty & single.offset(direction) & target_row;
+        //         // single | double
+
+        //         Some(Bitset(0))
+        //     }
+        //     _ => None,
+        // }
+        // let pawns = self.positions[PieceKind::Pawn];
+
         // single and double pushes
-        let empty = !self.occupancy;
-        let single = empty & pawns.offset(direction);
-        let double = empty & single.offset(direction) & target_row;
-        single | double
+        // let empty = !self.occupancy;
+        // let single = empty & pawns.offset(direction);
+        // let double = empty & single.offset(direction) & target_row;
+        // single | double
+
+        Bitset(0)
     }
 
-    pub fn occupant_moveset(&self, tile: Tile) -> Option<(Piece, HashSet<Tile>)> {
+    pub fn occupant_moveset(&self, tile: Tile) -> Option<(Piece, Bitset)> {
         // see https://www.chessprogramming.org/Efficient_Generation_of_Sliding_Piece_Attacks#Bitboard_Basics
         if let Some(occupant) = self.occupant(tile) {
             let moveset = match occupant.kind {
@@ -311,83 +352,29 @@ impl Board {
                 PieceKind::Knight => todo!(),
                 PieceKind::Queen => todo!(),
                 PieceKind::King => todo!(),
-            }
-            .tiles()
-            .collect();
+            };
             Some((occupant, moveset))
         } else {
             None
         }
     }
 
-    fn knight_moveset(&self, color: Color) -> Box<[Bitset; Bitset::MAX_LEN]> {
-        todo!()
-        // fn north_north_east(b: Bitset) -> Bitset {
-        //     (b << 17_u64) & !Board::FILE_MASKS[0]
-        // }
-        // fn north_east_east(b: Bitset) -> Bitset {
-        //     (b << 10_u64) & !(Board::FILE_MASKS[0] | Board::FILE_MASKS[1])
-        // }
-        // fn south_east_east(b: Bitset) -> Bitset {
-        //     (b >> 6_u64) & !(Board::FILE_MASKS[0] | Board::FILE_MASKS[1])
-        // }
-        // // fn south_south_east(b: Bitset) -> Bitset { (b >> 15_u64) & notAFile  }
-        // // fn north_north_west(b: Bitset) -> Bitset { (b << 15_u64) & notHFile  }
-        // // fn north_west_west(b: Bitset) -> Bitset { (b <<  6_u64) & notGHFile }
-        // // fn south_west_west(b: Bitset) -> Bitset { (b >> 10_u64) & notGHFile }
-        // // fn south_south_west(b: Bitset) -> Bitset { (b >> 17_u64) & notHFile  }
-
-        // // fn north_north_east(b: Bitset) -> Bitset { (b & notHFile ) << 17 }
-        // // fn north_east_east(b: Bitset) -> Bitset { (b & notGHFile) << 10 }
-        // // fn south_east_east(b: Bitset) -> Bitset { (b & notGHFile) >>  6 }
-        // // fn south_south_east(b: Bitset) -> Bitset { (b & notHFile ) >> 15 }
-        // // fn north_north_west(b: Bitset) -> Bitset { (b & notAFile ) << 15 }
-        // // fn north_west_west(b: Bitset) -> Bitset { (b & notABFile) <<  6 }
-        // // fn south_west_west(b: Bitset) -> Bitset { (b & notABFile) >> 10 }
-        // // fn south_south_west(b: Bitset) -> Bitset { (b & notAFile ) >> 17 }
-        // let board = Bitset(u64::MAX);
-        // let mut movesets = Box::new([Bitset(0); 64]);
-        // for (i, tile) in board.tiles().enumerate() {
-        //     movesets[i] = Bitset(0);
-        // }
-        // movesets
-    }
-
     /// Returns `true` if `tile` is occupied, and `false` otherwise.
     pub fn occupied(&self, tile: Tile) -> bool {
-        !(self.occupancy & tile).is_empty()
+        !((self.occupancy[0] | self.occupancy[1]) & tile).is_empty()
     }
 
-    /// Returns the piece occupying` `tile` if any, and `None` otherwise.
+    /// Returns the piece occupying `tile` if any, and `None` otherwise.
     pub fn occupant(&self, tile: Tile) -> Option<Piece> {
         self.occupants[tile.as_index()]
     }
 
     /// Tries to make `attempt` on the given board, returning the kind of move (or error) that occurred.
     pub fn try_move(&mut self, attempt: Move) -> Result<MoveKind, MoveError> {
-        let mut kind = Err(MoveError::NonexistentPiece(attempt.start));
-        if let Some((occupant, moveset)) = self.occupant_moveset(attempt.start) {
-            if moveset.contains(&attempt.stop) {
-                // Toggle origin bit and set destination bit
-                let actor_set = self.set_of(occupant);
-                actor_set.toggle(attempt.start);
-                actor_set.insert(attempt.stop);
-
-                // Check capture
-                kind = match self.occupant(attempt.stop) {
-                    None => Ok(MoveKind::Quiet),
-                    Some(target) => {
-                        let target_set = self.set_of(target);
-                        target_set.toggle(attempt.stop);
-                        Ok(MoveKind::Capture(target))
-                    }
-                };
-
-                // Toggle origin, set destination for occupancy lookup
-                self.occupancy.toggle(attempt.start);
-                self.occupancy |= Bitset::from(attempt.stop);
-
-                // TODO: check for other types
+        let mut kind = Err(MoveError::NonexistentPiece(attempt.start()));
+        if let Some((occupant, moveset)) = self.occupant_moveset(attempt.start()) {
+            if moveset.contains(attempt.stop()) {
+                todo!("Implement move logic")
             } else {
                 // else move not in moveset
                 kind = Err(MoveError::IllegalMove(attempt));
@@ -401,10 +388,6 @@ impl Board {
     pub fn winner(&self) -> Option<Color> {
         // TODO: overlap movement sets to determine who is in checkmate
         None
-    }
-
-    fn moveset(&self, color: Color) -> Bitset {
-        Bitset(0)
     }
 }
 
@@ -459,7 +442,6 @@ impl TryFrom<&str> for Board {
 mod tests {
     use super::Board;
     use crate::game::color::Color;
-
     use crate::{
         game::board::{
             Tile,
@@ -467,7 +449,7 @@ mod tests {
         },
         game::piece::{Piece, PieceKind},
     };
-    use std::{collections::HashSet, convert::*};
+    use std::collections::HashSet;
 
     fn correct_starting_piece(tile: Tile) -> Option<Piece> {
         let (row, col) = (tile.rank(), tile.file());
@@ -557,38 +539,5 @@ mod tests {
 
         let black = board.pawn_movesets(Color::Black);
         assert_eq!(black, Bitset(0x0000FFFF00000000));
-    }
-
-    // #[test]
-    // fn test_knight_starting_moveset() {
-    //     let board = Board::new();
-    //     let white = board.knight_moveset(Color::White);
-    //     for (i, element) in white.iter().enumerate() {
-    //         let position = Tile::from(i);
-    //         for tile in element.tiles() {
-    //             let rank_diff = position.rank.abs_diff(tile.rank);
-    //             let file_diff = position.file.abs_diff(tile.file);
-    //             assert!((rank_diff == 1 && file_diff == 2) | (rank_diff == 2 && file_diff == 1));
-    //         }
-    //     }
-    // }
-
-    #[test]
-    fn test_occupant_moveset() {
-        let board = Board::new();
-
-        // e2e4
-        let (piece, moveset) = board.occupant_moveset(Tile::new(1, 4)).unwrap();
-        assert_eq!(
-            piece,
-            Piece {
-                kind: PieceKind::Pawn,
-                color: Color::White
-            }
-        );
-        assert_eq!(
-            moveset,
-            HashSet::from_iter([Tile::new(5, 4), Tile::new(6, 4)])
-        );
     }
 }

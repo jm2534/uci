@@ -5,9 +5,9 @@ use thiserror::Error;
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, Sequence)]
 pub enum PieceKind {
     Pawn,
-    Rook,
-    Bishop,
     Knight,
+    Bishop,
+    Rook,
     Queen,
     King,
 }

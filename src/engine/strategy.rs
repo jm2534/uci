@@ -11,23 +11,23 @@ pub trait Strategy {
     /// By default, lists the  moves available to `color` on the current `board`
     /// ordered by the results of `Strategy::evaluate` called on each position.
     fn order(&self, board: Board, color: Color) -> Vec<Move> {
-        let captures = board.possible_captures(color);
-        let mut ordering: Vec<Move> = Vec::from_iter(captures.clone());
+        // let captures = board.possible_captures(color);
 
-        let eval = |movement: &Move| {
-            let target = board.occupant(movement.stop).unwrap();
-            if target.kind == PieceKind::King {
-                i32::MAX
-            } else {
-                self.value(&target)
-            }
-        };
-        // Reverse sorting of moves
-        ordering.sort_by(|m1, m2| eval(m2).partial_cmp(&eval(m1)).unwrap());
+        // let eval = |movement: &Move| {
+        //     let target = board.occupant(movement.stop).unwrap();
+        //     if target.kind == PieceKind::King {
+        //         i32::MAX
+        //     } else {
+        //         self.value(&target)
+        //     }
+        // };
+        // // Reverse sorting of moves
+        // ordering.sort_by(|m1, m2| eval(m2).partial_cmp(&eval(m1)).unwrap());
 
-        // Add remaining moves that were not captures
-        ordering.extend(&board.possible_moves(color) - &captures);
-        ordering
+        // // Add remaining moves that were not captures
+        // ordering.extend(&board.possible_moves(color) - &captures);
+        // ordering
+        vec![]
     }
 
     /// Returns the current value of the board from the perspective of `color`.

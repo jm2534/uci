@@ -35,19 +35,40 @@ pub enum MoveKind {
     PromotionCapture(Piece, Piece),
 }
 
+/// Stockfish definition of a move:
+/// A move needs 16 bits to be stored
+///
+/// bit  0-5: destination square (from 0 to 63)
+/// bit  6-11: origin square (from 0 to 63)
+/// bit 12-13: promotion piece type - 2 (from KNIGHT-2 to QUEEN-2)
+/// bit 14-15: special move flag: promotion (1), en passant (2), castling (3)
+/// NOTE: EN-PASSANT bit is set only when a pawn can be captured
+///
 #[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct Move {
-    pub start: Tile,
-    pub stop: Tile,
-}
+pub struct Move(u16);
 
 impl Move {
     const NULL_MOVE: &str = "0000";
+
+    pub fn new(start: Tile, stop: Tile) -> Self {
+        let mut value = start.as_index() as u16;
+        value |= (stop.as_index() as u16) << 6;
+        // TODO: Implement promotion and special move flags
+        Self(value)
+    }
+
+    pub fn start(&self) -> Tile {
+        Tile::from_index((self.0 & 0x003F) as usize)
+    }
+
+    pub fn stop(&self) -> Tile {
+        Tile::from_index((self.0 & 0x0FC0) as usize >> 6)
+    }
 }
 
 impl Display for Move {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}{}", self.start, self.stop)
+        write!(f, "{}{}", self.start(), self.stop())
     }
 }
 
@@ -83,7 +104,7 @@ impl TryFrom<&str> for Move {
                         let start = caps["start"].try_into();
                         let stop = caps["stop"].try_into();
                         match (start, stop) {
-                            (Ok(start), Ok(stop)) => Ok(Move { start, stop }),
+                            (Ok(start), Ok(stop)) => Ok(Move::new(start, stop)),
                             (Err(e), _) | (_, Err(e)) => {
                                 Err(MoveParseError::BadTile(e, trimmed.to_owned()))
                             }
@@ -102,15 +123,22 @@ mod tests {
     use anyhow::Result;
 
     #[test]
+    fn test_start_stop() {
+        let start = Tile::new(1, 0);
+        let stop = Tile::new(2, 0);
+        let m = Move::new(start, stop);
+
+        assert_eq!(m.start(), start);
+        assert_eq!(m.stop(), stop);
+    }
+
+    #[test]
     fn test_edge_file() -> Result<()> {
         let value = "a2a3";
 
         assert_eq!(
             Move::try_from(value)?,
-            Move {
-                start: Tile::new(0, 1),
-                stop: Tile::new(0, 2)
-            }
+            Move::new(Tile::new(1, 0), Tile::new(2, 0))
         );
         Ok(())
     }
@@ -121,10 +149,7 @@ mod tests {
 
         assert_eq!(
             Move::try_from(value)?,
-            Move {
-                start: Tile::new(1, 0),
-                stop: Tile::new(1, 1)
-            }
+            Move::new(Tile::new(0, 1), Tile::new(1, 1))
         );
         Ok(())
     }
@@ -135,10 +160,7 @@ mod tests {
 
         assert_eq!(
             Move::try_from(value)?,
-            Move {
-                start: Tile::new(0, 0),
-                stop: Tile::new(0, 0)
-            }
+            Move::new(Tile::new(0, 0), Tile::new(0, 0))
         );
         Ok(())
     }
@@ -149,10 +171,7 @@ mod tests {
 
         assert_eq!(
             Move::try_from(value)?,
-            Move {
-                start: Tile::new(4, 1),
-                stop: Tile::new(4, 3)
-            }
+            Move::new(Tile::new(1, 4), Tile::new(3, 4))
         );
         Ok(())
     }
@@ -163,17 +182,8 @@ mod tests {
 
         assert_eq!(
             Move::try_from(value)?,
-            Move {
-                start: Tile::new(4, 0),
-                stop: Tile::new(6, 0)
-            }
+            Move::new(Tile::new(0, 4), Tile::new(0, 6))
         );
-        Ok(())
-    }
-
-    #[test]
-    fn test_promotion() -> Result<()> {
-        let value = "e7e8q";
         Ok(())
     }
 

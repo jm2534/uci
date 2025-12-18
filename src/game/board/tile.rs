@@ -1,4 +1,4 @@
-use crate::game::board::bitset::Bitset;
+use crate::game::board::{Board, bitset::Bitset};
 use std::{
     fmt::Display,
     ops::{BitAnd, BitOr, BitXor},
@@ -12,9 +12,55 @@ pub struct Tile(Bitset);
 
 impl Tile {
     /// Create a new tile from (zero-indexed) rank and file.
+    /// Saturates at the maximum rank and file values, meaning that if the rank
+    /// or file is greater than or equal to the maximum dimension of the board,
+    /// it will be set to the maximum dimension minus one.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use uci_engine::game::board::Tile;
+    ///
+    /// let tile = Tile::new(0, 0);
+    /// assert_eq!(tile.as_index(), 0); // a1
+    ///
+    /// let tile = Tile::new(255, 0);
+    /// assert_eq!(tile.as_index(), 56); // a8
+    ///
+    /// let tile = Tile::new(0, 255);
+    /// assert_eq!(tile.as_index(), 7); // h1
+    ///
+    /// let tile = Tile::new(255, 255);
+    /// assert_eq!(tile.as_index(), 63); // h8
+    /// ```
     pub fn new(rank: u8, file: u8) -> Self {
-        let value = 1 << ((8 * (rank as u64)) + (file as u64));
+        let rank_shift = Board::MAX_DIM as u64 * rank.min(Board::MAX_DIM - 1) as u64;
+        let file_shift = file.min(Board::MAX_DIM - 1) as u64;
+        let value = 1 << (rank_shift as u64 + file_shift);
         Self(Bitset(value))
+    }
+
+    /// Creates a tile from an index. Panics if the index is not the range `[0, 63]`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use uci_engine::game::board::Tile;
+    ///
+    /// let tile = Tile::from_index(0);
+    /// assert_eq!(tile.as_index(), 0); // a1
+    ///
+    /// let tile = Tile::from_index(56);
+    /// assert_eq!(tile.as_index(), 56); // a8
+    ///
+    /// let tile = Tile::from_index(7);
+    /// assert_eq!(tile.as_index(), 7); // h1
+    ///
+    /// let tile = Tile::from_index(63);
+    /// assert_eq!(tile.as_index(), 63); // h8
+    /// ```
+    pub fn from_index(index: usize) -> Self {
+        Self(Bitset(1 << index))
     }
 
     /// Returns the representation of the tile as an index, meaning the
@@ -261,6 +307,18 @@ mod tests {
             assert_eq!(tile.as_index(), 19);
 
             let tile = Tile::new(7, 7);
+            assert_eq!(tile.as_index(), 63);
+        }
+
+        #[test]
+        fn test_tile_to_index_saturation() {
+            let tile = Tile::new(255, 0);
+            assert_eq!(tile.as_index(), 56); // a8
+
+            let tile = Tile::new(0, 255);
+            assert_eq!(tile.as_index(), 7); // g1
+
+            let tile = Tile::new(255, 255);
             assert_eq!(tile.as_index(), 63);
         }
 

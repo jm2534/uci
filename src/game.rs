@@ -1,4 +1,4 @@
-pub(crate) mod board;
-pub(crate) mod color;
+pub mod board;
+pub mod color;
 pub mod moves;
-pub(crate) mod piece;
+pub mod piece;

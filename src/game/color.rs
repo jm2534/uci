@@ -1,4 +1,7 @@
-use std::{ops::Not, str::FromStr};
+use std::{
+    ops::{Index, IndexMut, Not},
+    str::FromStr,
+};
 
 use enum_iterator::Sequence;
 
@@ -40,5 +43,19 @@ impl Not for Color {
             Color::Black => Color::White,
             Color::White => Color::Black,
         }
+    }
+}
+
+impl<T> Index<Color> for [T] {
+    type Output = T;
+
+    fn index(&self, index: Color) -> &Self::Output {
+        &self[index as usize]
+    }
+}
+
+impl<T> IndexMut<Color> for [T] {
+    fn index_mut(&mut self, index: Color) -> &mut Self::Output {
+        &mut self[index as usize]
     }
 }

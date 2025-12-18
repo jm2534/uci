@@ -10,7 +10,7 @@ use std::{
 use crate::game::board::tile::{Tile, Tiles};
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, Sequence)]
-pub(super) enum Offset {
+pub enum Offset {
     North,
     South,
     East,
@@ -55,7 +55,7 @@ impl Bitset {
     /// Determines the cardinality of `self`; that is, the number of set
     /// bits in `self`.
     pub fn len(&self) -> u32 {
-        self.0.count_ones() as u32
+        self.0.count_ones()
     }
 
     pub fn tiles(&self) -> Tiles {
@@ -136,6 +136,30 @@ impl From<Bitset> for u64 {
 impl From<u64> for Bitset {
     fn from(value: u64) -> Self {
         Bitset(value)
+    }
+}
+
+impl BitAnd<Bitset> for u64 {
+    type Output = Bitset;
+
+    fn bitand(self, rhs: Bitset) -> Self::Output {
+        Bitset(self & rhs.0)
+    }
+}
+
+impl BitOr<Bitset> for u64 {
+    type Output = Bitset;
+
+    fn bitor(self, rhs: Bitset) -> Self::Output {
+        Bitset(self | rhs.0)
+    }
+}
+
+impl BitXor<Bitset> for u64 {
+    type Output = Bitset;
+
+    fn bitxor(self, rhs: Bitset) -> Self::Output {
+        Bitset(self ^ rhs.0)
     }
 }
 
