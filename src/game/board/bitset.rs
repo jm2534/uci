@@ -2,8 +2,8 @@ use enum_iterator::Sequence;
 use std::{
     fmt::{Binary, Error, Formatter},
     ops::{
-        BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Deref, Index, Not, Shl,
-        ShlAssign, Shr, ShrAssign,
+        BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, ShlAssign, Shr,
+        ShrAssign,
     },
 };
 

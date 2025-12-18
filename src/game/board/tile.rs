@@ -133,7 +133,8 @@ impl Iterator for Tiles {
         match self.value {
             0 => None,
             x => {
-                let ls1b = x & -x; // isolate LS1B
+                // TODO: works, but need to understand why wrapping specifically
+                let ls1b = x & x.wrapping_neg(); // isolate LS1B
                 self.value ^= ls1b; // clear LS1B
                 Some(Tile(Bitset(ls1b as u64)))
             }

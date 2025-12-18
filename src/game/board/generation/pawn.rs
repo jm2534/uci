@@ -145,41 +145,147 @@ mod attack_tests {
 #[cfg(test)]
 mod generation_tests {
     use super::*;
-    use crate::game::{
-        board::tile::Tile,
-        color::Color,
-        piece::{Piece, PieceKind},
-    };
+    use crate::game::{board::tile::Tile, color::Color};
 
     #[test]
     fn test_white_pawn_single_push() {
-        // TODO: Implement test for white pawn single push
-        // This will require setting up a board with a white pawn
-        // and verifying it can push forward one square
+        let mut board = Board::new();
+        // Clear all occupancy for clean test
+        board.occupancy[Color::White] = Bitset(0);
+        board.occupancy[Color::Black] = Bitset(0);
+        board.to_move = Color::White;
+
+        // Place a white pawn on e4 (not starting rank)
+        let pawn_tile = Tile::try_from("e4").unwrap();
+        board.occupancy[Color::White] = pawn_tile.as_bitset();
+
+        let moves = board.pawn_moves(pawn_tile);
+
+        // Should only be able to push to e5 (single push)
+        let expected = Tile::try_from("e5").unwrap().as_bitset();
+        assert_eq!(moves, expected);
     }
 
     #[test]
     fn test_white_pawn_double_push() {
-        // TODO: Implement test for white pawn double push from starting position
+        let mut board = Board::new();
+        // Clear all occupancy for clean test
+        board.occupancy[Color::White] = Bitset(0);
+        board.occupancy[Color::Black] = Bitset(0);
+        board.to_move = Color::White;
+
+        // Place a white pawn on e2 (starting rank)
+        let pawn_tile = Tile::try_from("e2").unwrap();
+        board.occupancy[Color::White] = pawn_tile.as_bitset();
+
+        let moves = board.pawn_moves(pawn_tile);
+
+        // Should be able to push to both e3 and e4 (single and double push)
+        let expected = Tile::try_from("e3").unwrap() | Tile::try_from("e4").unwrap();
+        assert_eq!(moves, expected);
     }
 
     #[test]
     fn test_black_pawn_single_push() {
-        // TODO: Implement test for black pawn single push
+        let mut board = Board::new();
+        // Clear all occupancy for clean test
+        board.occupancy[Color::White] = Bitset(0);
+        board.occupancy[Color::Black] = Bitset(0);
+        board.to_move = Color::Black;
+
+        // Place a black pawn on d5 (not starting rank)
+        let pawn_tile = Tile::try_from("d5").unwrap();
+        board.occupancy[Color::Black] = pawn_tile.as_bitset();
+
+        let moves = board.pawn_moves(pawn_tile);
+
+        // Should only be able to push to d4 (single push for black)
+        let expected = Tile::try_from("d4").unwrap().as_bitset();
+        assert_eq!(moves, expected);
     }
 
     #[test]
     fn test_pawn_captures() {
-        // TODO: Implement test for pawn diagonal captures
+        let mut board = Board::new();
+        // Clear all occupancy for clean test
+        board.occupancy[Color::White] = Bitset(0);
+        board.occupancy[Color::Black] = Bitset(0);
+        board.to_move = Color::White;
+
+        // Place a white pawn on d4
+        let pawn_tile = Tile::try_from("d4").unwrap();
+        board.occupancy[Color::White] = pawn_tile.as_bitset();
+
+        // Place black pieces on diagonal capture squares
+        let enemy_squares = Tile::try_from("c5").unwrap() | Tile::try_from("e5").unwrap();
+        board.occupancy[Color::Black] = enemy_squares;
+
+        let moves = board.pawn_moves(pawn_tile);
+
+        // Should be able to push forward and capture diagonally
+        let expected = Tile::try_from("d5").unwrap() | enemy_squares;
+        assert_eq!(moves, expected);
     }
 
     #[test]
     fn test_pawn_blocked_push() {
-        // TODO: Test that pawns cannot push when blocked by another piece
+        let mut board = Board::new();
+        // Clear all occupancy for clean test
+        board.occupancy[Color::White] = Bitset(0);
+        board.occupancy[Color::Black] = Bitset(0);
+        board.to_move = Color::White;
+
+        // Place a white pawn on e2 (starting rank)
+        let pawn_tile = Tile::try_from("e2").unwrap();
+        board.occupancy[Color::White] = pawn_tile.as_bitset();
+
+        // Block the single push square with any piece
+        let blocking_square = Tile::try_from("e3").unwrap();
+        board.occupancy[Color::Black] = blocking_square.as_bitset();
+
+        let moves = board.pawn_moves(pawn_tile);
+
+        // Should not be able to move at all (blocked)
+        assert_eq!(moves, Bitset(0));
     }
 
     #[test]
     fn test_pawn_edge_captures() {
-        // TODO: Test that pawns on A/H files don't wrap around when capturing
+        let mut board = Board::new();
+        // Clear all occupancy for clean test
+        board.occupancy[Color::White] = Bitset(0);
+        board.occupancy[Color::Black] = Bitset(0);
+        board.to_move = Color::White;
+
+        // Test pawn on A file
+        let a_pawn_tile = Tile::try_from("a4").unwrap();
+        board.occupancy[Color::White] = a_pawn_tile.as_bitset();
+
+        // Place enemy piece on the only valid capture square
+        let enemy_square = Tile::try_from("b5").unwrap();
+        board.occupancy[Color::Black] = enemy_square.as_bitset();
+
+        let moves = board.pawn_moves(a_pawn_tile);
+
+        // Should be able to push forward and capture to the right only
+        let expected = Tile::try_from("a5").unwrap() | enemy_square;
+        assert_eq!(moves, expected);
+
+        // Test pawn on H file
+        board.occupancy[Color::White] = Bitset(0);
+        board.occupancy[Color::Black] = Bitset(0);
+
+        let h_pawn_tile = Tile::try_from("h4").unwrap();
+        board.occupancy[Color::White] = h_pawn_tile.as_bitset();
+
+        // Place enemy piece on the only valid capture square
+        let enemy_square = Tile::try_from("g5").unwrap();
+        board.occupancy[Color::Black] = enemy_square.as_bitset();
+
+        let moves = board.pawn_moves(h_pawn_tile);
+
+        // Should be able to push forward and capture to the left only
+        let expected = Tile::try_from("h5").unwrap() | enemy_square;
+        assert_eq!(moves, expected);
     }
 }
