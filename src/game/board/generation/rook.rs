@@ -6,7 +6,8 @@ use crate::game::board::tile::Tile;
 impl Board {
     /// Generate all possible moves for a rook at the given tile.
     pub(super) fn rook_moves(&self, _tile: Tile) -> Bitset {
-        todo!("Rook move generation")
+        // TODO: Implement bishop move generation
+        Bitset(0)
     }
 }
 

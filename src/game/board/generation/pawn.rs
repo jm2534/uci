@@ -11,7 +11,7 @@ pub const PAWN_ATTACKS: [[Bitset; 64]; 2] = generate_pawn_attacks_table();
 
 impl Board {
     /// Generate all pseudo-legal moves assuming a pawn at the given tile.
-    pub(super) fn pawn_moves(&self, tile: Tile) -> Bitset {
+    pub fn pawn_moves(&self, tile: Tile) -> Bitset {
         // pawn moves are simply single/double pushes + attacks
         self.pawn_pushes(tile) | self.pawn_captures(tile)
     }

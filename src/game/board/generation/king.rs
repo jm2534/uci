@@ -7,7 +7,7 @@ pub const KING_ATTACKS: [Bitset; 64] = generate_king_attacks_table();
 
 impl Board {
     /// Generate all pseudo-legal moves assuming a king at the given tile.
-    pub(super) fn king_moves(&self, tile: Tile) -> Bitset {
+    pub fn king_moves(&self, tile: Tile) -> Bitset {
         // kings can move to any square in their attack pattern not occupied by own pieces
         KING_ATTACKS[tile.as_index()] & !self.occupancy[self.to_move]
     }
@@ -126,64 +126,74 @@ mod attack_tests {
 #[cfg(test)]
 mod generation_tests {
     use super::*;
-    use crate::game::{board::Board, color::Color};
+    use crate::game::{
+        board::Board,
+        color::Color,
+        piece::{Piece, PieceKind},
+    };
 
     #[test]
     fn test_king_moves_empty_board() {
-        // Test king moves on an empty board - should return all attack squares
-        let mut board = Board::new();
-        // Clear all occupancy for empty board test
-        board.occupancy[Color::White] = Bitset(0);
-        board.occupancy[Color::Black] = Bitset(0);
-        board.to_move = Color::White;
-
+        // king moves on an empty board should return all attack squares
+        let board = Board::empty();
         let king_tile = Tile::try_from("d4").unwrap();
         let moves = board.king_moves(king_tile);
-
-        // Should match the attack pattern exactly since no pieces block
         let expected = KING_ATTACKS[king_tile.as_index()];
         assert_eq!(moves, expected);
     }
 
     #[test]
     fn test_king_moves_blocked_by_own_pieces() {
-        let mut board = Board::new();
-        // Clear all occupancy first
-        board.occupancy[Color::White] = Bitset(0);
-        board.occupancy[Color::Black] = Bitset(0);
-        board.to_move = Color::White;
-
-        // Place white pieces on some potential king destination squares
-        let blocked_squares = Tile::try_from("c4").unwrap() | Tile::try_from("d5").unwrap();
-        board.occupancy[Color::White] = blocked_squares;
+        let mut board = Board::empty();
+        board.place_unchecked(
+            Piece {
+                kind: PieceKind::Pawn,
+                color: Color::White,
+            },
+            Tile::try_from("c4").unwrap(),
+        );
+        board.place_unchecked(
+            Piece {
+                kind: PieceKind::Pawn,
+                color: Color::White,
+            },
+            Tile::try_from("d5").unwrap(),
+        );
 
         let king_tile = Tile::try_from("d4").unwrap();
         let moves = board.king_moves(king_tile);
 
-        // King should not be able to move to squares occupied by own pieces
-        assert!((moves & blocked_squares).is_empty());
+        // king should not be able to move to squares occupied by own pieces
+        assert!((moves & board.occupancy[Color::White]).is_empty());
 
-        // But should still be able to move to other squares
+        // but should still be able to move to other squares
         let free_square = Tile::try_from("e4").unwrap();
         assert!((moves & free_square.as_bitset()) != Bitset(0));
     }
 
     #[test]
     fn test_king_captures_enemy_pieces() {
-        let mut board = Board::new();
-        // Clear all occupancy first
-        board.occupancy[Color::White] = Bitset(0);
-        board.occupancy[Color::Black] = Bitset(0);
-        board.to_move = Color::White;
-
-        // Place enemy pieces on some potential king destination squares
-        let enemy_squares = Tile::try_from("c4").unwrap() | Tile::try_from("e5").unwrap();
-        board.occupancy[Color::Black] = enemy_squares;
+        let mut board = Board::empty();
+        board.place_unchecked(
+            Piece {
+                kind: PieceKind::Pawn,
+                color: Color::Black,
+            },
+            Tile::try_from("c4").unwrap(),
+        );
+        board.place_unchecked(
+            Piece {
+                kind: PieceKind::Pawn,
+                color: Color::Black,
+            },
+            Tile::try_from("e5").unwrap(),
+        );
 
         let king_tile = Tile::try_from("d4").unwrap();
         let moves = board.king_moves(king_tile);
 
-        // King should be able to capture enemy pieces
+        // king should be able to capture enemy pieces
+        let enemy_squares = board.occupancy[Color::Black];
         assert!((moves & enemy_squares) == enemy_squares);
     }
 }

@@ -13,7 +13,6 @@ use bitset::Bitset;
 use std::{
     collections::HashSet,
     ops::{Index, IndexMut},
-    sync::LazyLock,
 };
 use thiserror::Error;
 
@@ -22,8 +21,11 @@ use tile::Tile;
 
 #[derive(Error, Copy, Clone, PartialEq, Eq, Debug)]
 pub enum MoveError {
-    #[error("Move not legal for piece: {0}")]
+    #[error("Move {0} is not legal")]
     IllegalMove(Move),
+
+    #[error("Piece {0:?} is not owned by the moving player")]
+    UnownedPiece(Piece),
 
     #[error("No piece exists at position {0}")]
     NonexistentPiece(Tile),
@@ -195,10 +197,14 @@ impl Board {
         // core bitboards
         let positions = Position::new();
 
+        // occupancy masks
+        let white = Board::RANK_MASKS[0] | Board::RANK_MASKS[1];
+        let black = Board::RANK_MASKS[6] | Board::RANK_MASKS[7];
+
         // populate mailbox from bitboards
         let mut occupants = [None; 64];
         for (kind, bitset) in positions {
-            for tile in bitset.tiles() {
+            for tile in (bitset & white).tiles() {
                 occupants[tile.as_index()] = Some(Piece {
                     kind,
                     color: Color::White,
@@ -206,17 +212,13 @@ impl Board {
             }
         }
         for (kind, bitset) in positions {
-            for tile in bitset.tiles() {
+            for tile in (bitset & black).tiles() {
                 occupants[tile.as_index()] = Some(Piece {
                     kind,
                     color: Color::Black,
                 });
             }
         }
-
-        // occupancy masks
-        let white = Board::RANK_MASKS[0] | Board::RANK_MASKS[1];
-        let black = Board::RANK_MASKS[6] | Board::RANK_MASKS[7];
 
         let board = Self {
             occupants,
@@ -244,15 +246,16 @@ impl Board {
     /// the specified recursion `depth`, returning the number of leaf nodes of
     /// the game tree at that location. Useful for debugging by comparison to
     /// published values.
-    pub(crate) fn perft(&self, depth: usize, color: Color) -> usize {
+    pub(crate) fn perft(&self, depth: usize) -> usize {
         let mut nodes = 0;
         match depth {
             0 => 1,
             d => {
-                for action in self.possible_moves(color) {
+                for action in self.possible_moves() {
                     let mut board = self.clone();
                     board.try_move(action).unwrap();
-                    nodes += board.perft(d - 1, !color);
+                    board.to_move = !board.to_move;
+                    nodes += board.perft(d - 1);
                 }
                 nodes
             }
@@ -269,11 +272,10 @@ impl Board {
         self.castling_rights
     }
 
-    pub fn possible_moves(&self, color: Color) -> HashSet<Move> {
+    pub fn possible_moves(&self) -> HashSet<Move> {
         let mut moves = HashSet::new(); // TODO: whether this makes sense
-        let color_occupancy = self.occupancy[color];
         for piece_kind in enum_iterator::all::<PieceKind>() {
-            let pieces_of_type = self.positions[piece_kind] & color_occupancy;
+            let pieces_of_type = self.positions[piece_kind] & self.occupancy[self.to_move];
             for piece_tile in pieces_of_type.tiles() {
                 let move_targets = self.moves_from_tile(piece_tile, piece_kind);
                 for target_tile in move_targets.tiles() {
@@ -316,7 +318,31 @@ impl Board {
 
     /// Tries to make `attempt` on the given board, returning the kind of move (or error) that occurred.
     pub fn try_move(&mut self, attempt: Move) -> Result<MoveKind, MoveError> {
-        todo!()
+        let start = attempt.start();
+        let stop = attempt.stop();
+        match self.occupants[start.as_index()] {
+            Some(piece) if piece.color == self.to_move => {
+                // this piece is owned by the moving player, dispatch to the appropriate move function
+                let moveset = match piece.kind {
+                    PieceKind::Pawn => self.pawn_moves(start),
+                    PieceKind::Knight => self.knight_moves(start),
+                    PieceKind::Bishop => todo!(),
+                    PieceKind::Rook => todo!(),
+                    PieceKind::Queen => todo!(),
+                    PieceKind::King => self.king_moves(start),
+                };
+
+                if moveset.contains(stop) {
+                    self.place_unchecked(piece, stop);
+                    // TODO: captures, promotions, castling, etc.
+                    Ok(MoveKind::Quiet)
+                } else {
+                    Err(MoveError::IllegalMove(attempt))
+                }
+            }
+            Some(piece) => Err(MoveError::UnownedPiece(piece)),
+            None => Err(MoveError::NonexistentPiece(attempt.stop())),
+        }
     }
 
     /// Returns the winner of the current board, if any. Useful for checking

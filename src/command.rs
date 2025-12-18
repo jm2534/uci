@@ -139,7 +139,7 @@ mod tests {
         let result = Command::try_from("abc position startpos moves e2e4");
         assert_eq!(
             result.unwrap(),
-            Command::Position(vec![Move::new(Tile::new(4, 1), Tile::new(4, 3))])
+            Command::Position(vec![Move::new(Tile::new(1, 4), Tile::new(3, 4))])
         )
     }
 
@@ -149,8 +149,8 @@ mod tests {
         assert_eq!(
             result.unwrap(),
             Command::Position(vec![
-                Move::new(Tile::new(4, 1), Tile::new(4, 3)),
-                Move::new(Tile::new(4, 6), Tile::new(4, 4)),
+                Move::new(Tile::new(1, 4), Tile::new(3, 4)),
+                Move::new(Tile::new(6, 4), Tile::new(4, 4)),
             ])
         )
     }

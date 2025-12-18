@@ -6,7 +6,8 @@ use crate::game::board::tile::Tile;
 impl Board {
     /// Generate all possible moves for a queen at the given tile.
     pub(super) fn queen_moves(&self, _tile: Tile) -> Bitset {
-        todo!("Queen move generation")
+        // TODO: Implement bishop move generation
+        Bitset(0)
     }
 }
 

@@ -7,7 +7,7 @@ pub const KNIGHT_ATTACKS: [Bitset; 64] = generate_knight_attacks_table();
 
 impl Board {
     /// Generate all pseudo-legal moves assuming a knight at the given tile.
-    pub(super) fn knight_moves(&self, tile: Tile) -> Bitset {
+    pub fn knight_moves(&self, tile: Tile) -> Bitset {
         // knights can move to any square in their attack pattern not occupied by own pieces
         KNIGHT_ATTACKS[tile.as_index()] & !self.occupancy[self.to_move]
     }
@@ -144,13 +144,7 @@ mod generation_tests {
 
     #[test]
     fn test_knight_moves_blocked_by_own_pieces() {
-        let mut board = Board::new();
-        // Clear all occupancy first
-        board.occupancy[Color::White] = Bitset(0);
-        board.occupancy[Color::Black] = Bitset(0);
-        board.to_move = Color::White;
-
-        // Place white pieces on some potential knight destination squares
+        let mut board = Board::empty();
         let blocked_squares = Tile::try_from("c2").unwrap() | Tile::try_from("f3").unwrap();
         board.occupancy[Color::White] = blocked_squares;
 
@@ -167,13 +161,7 @@ mod generation_tests {
 
     #[test]
     fn test_knight_captures_enemy_pieces() {
-        let mut board = Board::new();
-        // Clear all occupancy first
-        board.occupancy[Color::White] = Bitset(0);
-        board.occupancy[Color::Black] = Bitset(0);
-        board.to_move = Color::White;
-
-        // Place enemy pieces on some potential knight destination squares
+        let mut board = Board::empty();
         let enemy_squares = Tile::try_from("c2").unwrap() | Tile::try_from("f5").unwrap();
         board.occupancy[Color::Black] = enemy_squares;
 

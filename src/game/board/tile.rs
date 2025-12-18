@@ -19,7 +19,7 @@ impl Tile {
     /// # Examples
     ///
     /// ```
-    /// use uci_engine::game::board::Tile;
+    /// use uci::game::board::tile::Tile;
     ///
     /// let tile = Tile::new(0, 0);
     /// assert_eq!(tile.as_index(), 0); // a1
@@ -45,7 +45,7 @@ impl Tile {
     /// # Examples
     ///
     /// ```
-    /// use uci_engine::game::board::Tile;
+    /// use uci::game::board::tile::Tile;
     ///
     /// let tile = Tile::from_index(0);
     /// assert_eq!(tile.as_index(), 0); // a1
