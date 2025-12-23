@@ -1,9 +1,6 @@
 use std::fmt::Display;
 
-use crate::game::{
-    board::Board,
-    moves::{Move, MoveParseError},
-};
+use crate::game::moves::{Move, MoveParseError};
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -16,11 +13,6 @@ pub enum CommandError {
 
     #[error("Unrecognized command argument `{0}`")]
     UnrecognizedArgument(String),
-}
-
-enum PositionMode {
-    Start,
-    Fen(String),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -91,9 +83,9 @@ impl TryFrom<&str> for Command {
                 "isready" => Ok(Command::IsReady),
                 "position" => {
                     // get starting position that follow-up moves reference
-                    let fenstring: Option<&str> = match tokens.next() {
+                    let _fenstring: Option<&str> = match tokens.next() {
                         Some("startpos") => None,
-                        fenstring @ Some("fenstring") => unimplemented!(),
+                        _fenstring @ Some("fenstring") => unimplemented!(),
                         Some(_) | None => return unrecognized(value),
                     };
 
@@ -107,10 +99,6 @@ impl TryFrom<&str> for Command {
                         unrecognized(value)
                     }
                 }
-                "go" => match tokens.next() {
-                    Some("ponder") => unimplemented!(),
-                    Some(_) | None => unrecognized(value),
-                },
                 _ => continue,
             };
             return result;

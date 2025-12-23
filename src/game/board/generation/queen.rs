@@ -13,13 +13,6 @@ impl Board {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::game::{
-        board::tile::Tile,
-        color::Color,
-        piece::{Piece, PieceKind},
-    };
-
     #[test]
     fn test_queen_rank_moves() {
         // TODO: Test queen moves along ranks (horizontal)

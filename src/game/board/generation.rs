@@ -37,7 +37,7 @@ mod tests {
     #[test]
     fn test_initial_board_generation() {
         let board = Board::new();
-        let moves = board.possible_moves();
+        let moves: HashSet<Move> = board.possible_moves().collect();
 
         let mut expected_moves = HashSet::new();
         let pawns = board.positions[PieceKind::Pawn] & board.occupancy[board.to_move];

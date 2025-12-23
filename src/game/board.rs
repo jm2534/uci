@@ -3,15 +3,18 @@ mod fen;
 mod generation;
 mod occupants;
 pub mod tile;
+use enum_iterator::All;
 pub use fen::ParseBoardError;
 
 use crate::game::{
+    board::tile::Tiles,
     color::Color,
     piece::{Piece, PieceKind},
 };
 use bitset::Bitset;
 use std::{
     collections::HashSet,
+    iter::FlatMap,
     ops::{Index, IndexMut},
 };
 use thiserror::Error;
@@ -276,18 +279,17 @@ impl Board {
         self.castling_rights
     }
 
-    pub fn possible_moves(&self) -> HashSet<Move> {
-        let mut moves = HashSet::new(); // TODO: whether this makes sense
-        for piece_kind in enum_iterator::all::<PieceKind>() {
-            let pieces_of_type = self.positions[piece_kind] & self.occupancy[self.to_move];
-            for piece_tile in pieces_of_type.tiles() {
-                let move_targets = self.moves_from_tile(piece_tile, piece_kind);
-                for target_tile in move_targets.tiles() {
-                    moves.insert(Move::new(piece_tile, target_tile));
-                }
+    /// Yields all legal moves for the current player.
+    pub fn possible_moves<'a>(&'a self) -> impl Iterator<Item = Move> + 'a {
+        // TODO: handle psuedo-legality of current moves
+        enum_iterator::all().flat_map(|kind| {
+            PieceKindMoves {
+                board: self,
+                kind,
+                tiles: (self.positions[kind] & self.occupancy[self.to_move]).tiles(),
             }
-        }
-        moves
+            .flatten()
+        })
     }
 
     pub fn pieces_of(&self, color: Color) -> Vec<(Piece, Tile)> {
@@ -412,8 +414,41 @@ impl TryFrom<&str> for Board {
     }
 }
 
+/// Iterator over all moves of a given piece kind on a board, used internally by boards when yielding moves.
+struct PieceKindMoves<'a> {
+    board: &'a Board,
+    kind: PieceKind,
+    tiles: Tiles,
+}
+
+impl<'a> Iterator for PieceKindMoves<'a> {
+    type Item = PieceMoves;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.tiles.next().map(|tile| PieceMoves {
+            source: tile,
+            moves: self.board.moves_from_tile(tile, self.kind).tiles(),
+        })
+    }
+}
+
+/// An interator over the moves of a given piece on a board, used internally by boards when yielding moves.
+struct PieceMoves {
+    moves: Tiles,
+    source: Tile,
+}
+
+impl Iterator for PieceMoves {
+    type Item = Move;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // TODO: handle psuedo-legality of current moves
+        self.moves.next().map(|tile| Move::new(self.source, tile))
+    }
+}
+
 #[cfg(test)]
-mod tests {
+mod board_tests {
     use super::Board;
     use crate::game::color::Color;
     use crate::{

@@ -13,13 +13,6 @@ impl Board {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::game::{
-        board::tile::Tile,
-        color::Color,
-        piece::{Piece, PieceKind},
-    };
-
     #[test]
     fn test_rook_rank_moves() {
         // TODO: Test rook moves along ranks (horizontal)
