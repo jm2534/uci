@@ -1,4 +1,4 @@
-mod strategy;
+pub mod strategy;
 use std::env;
 use strategy::{Strategy, minimax::Minimax};
 
@@ -8,10 +8,7 @@ const AUTHOR: &str = env!("CARGO_PKG_AUTHORS");
 
 use crate::{
     command::Command,
-    game::{
-        board::{Board, MoveError},
-        color::Color,
-    },
+    game::board::{Board, MoveError},
 };
 
 pub struct Engine<S: Strategy> {
@@ -34,7 +31,7 @@ impl Default for Engine<Minimax> {
             state: Command::Uci,
             board: Board::new(),
             debug: false,
-            strategy: Minimax::new(Color::White),
+            strategy: Minimax::new(),
         }
     }
 }

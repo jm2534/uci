@@ -2,16 +2,13 @@ use std::isize;
 
 use super::Strategy;
 use crate::game::board::Board;
-use crate::game::color::Color;
 use crate::game::moves::Move;
 
-pub struct Minimax {
-    player: Color,
-}
+pub struct Minimax;
 
 impl Minimax {
-    pub fn new(max: Color) -> Self {
-        Self { player: max }
+    pub fn new() -> Self {
+        Self {}
     }
 }
 

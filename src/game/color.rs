@@ -23,6 +23,15 @@ impl From<bool> for Color {
     }
 }
 
+impl std::fmt::Display for Color {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Color::Black => write!(f, "Black"),
+            Color::White => write!(f, "White"),
+        }
+    }
+}
+
 impl FromStr for Color {
     type Err = ColorParseError;
 

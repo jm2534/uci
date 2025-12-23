@@ -3,7 +3,6 @@ mod fen;
 mod generation;
 mod occupants;
 pub mod tile;
-use enum_iterator::All;
 pub use fen::ParseBoardError;
 
 use crate::game::{
@@ -12,11 +11,7 @@ use crate::game::{
     piece::{Piece, PieceKind},
 };
 use bitset::Bitset;
-use std::{
-    collections::HashSet,
-    iter::FlatMap,
-    ops::{Index, IndexMut},
-};
+use std::ops::{Index, IndexMut};
 use thiserror::Error;
 
 use super::moves::{Move, MoveKind};
@@ -249,7 +244,7 @@ impl Board {
     /// the specified recursion `depth`, returning the number of leaf nodes of
     /// the game tree at that location. Useful for debugging by comparison to
     /// published values.
-    pub(crate) fn perft(&self, depth: usize) -> usize {
+    pub fn perft(&self, depth: usize) -> usize {
         let mut nodes = 0;
         match depth {
             0 => 1,

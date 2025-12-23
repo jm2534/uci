@@ -451,6 +451,7 @@ name = "termchess"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "crossterm",
  "enum-iterator",
  "inquire",
  "paste",
