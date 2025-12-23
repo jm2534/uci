@@ -1,8 +1,4 @@
-use inquire::{InquireError, Select};
-use std::{
-    io::{Write, stdin, stdout},
-    thread, time,
-};
+use std::{thread, time};
 use uci::{
     command::Command,
     engine::Engine,
@@ -11,8 +7,12 @@ use uci::{
 
 fn draw(board: &Board, moves: &[Move], player_color: Color) {
     clear();
-    render::draw(board);
-    println!("\n{:?}", moves);
+    render::draw(board, player_color);
+    print!("\n");
+    for m in moves {
+        print!("{} ", m);
+    }
+    print!("\n");
 
     if board.to_move() != player_color {
         let duration = time::Duration::from_millis(500);
@@ -25,13 +25,15 @@ pub fn clear() {
 }
 
 fn main() {
+    let color = terminal::prompt_color();
     let mut engine = Engine::default();
     let mut moves = Vec::new();
     while !engine.finished() {
-        draw(&engine.board, &moves, Color::White);
+        draw(&engine.board, &moves, color);
         let mut input = terminal::prompt_move().unwrap();
         moves.push(input);
-        while let Err(_) = engine.handle(Command::Position(moves.clone())) {
+        while let Err(e) = engine.handle(Command::Position(vec![input])) {
+            eprintln!("{e}");
             moves.pop();
             input = terminal::prompt_move().unwrap();
             moves.push(input);
@@ -117,8 +119,7 @@ mod render {
 
     /// Locks standard output and prints the state of the current `Game` from
     /// the perspective of the player of color `color`.
-    pub fn draw(board: &Board) {
-        let color = board.to_move();
+    pub fn draw(board: &Board, color: Color) {
         let mut board: [Option<Piece>; 64] = board.occupants().to_owned();
         if color == Color::White {
             // initial reverse to handle the fact that white's rows come first

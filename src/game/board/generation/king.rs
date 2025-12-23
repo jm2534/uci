@@ -3,31 +3,31 @@ use crate::game::board::tile::Tile;
 
 /// Pre-computed king attack patterns indexed by square.
 /// Kings move the same regardless of color, so there is no need to distinguish between players.
-pub const KING_ATTACKS: [Bitset; 64] = generate_king_attacks_table();
+pub const KING_MOVES: [Bitset; 64] = generate_king_moves_table();
 
 impl Board {
     /// Generate all pseudo-legal moves assuming a king at the given tile.
     pub fn king_moves(&self, tile: Tile) -> Bitset {
         // kings can move to any square in their attack pattern not occupied by own pieces
-        KING_ATTACKS[tile.as_index()] & !self.occupancy[self.to_move]
+        KING_MOVES[tile] & !self.occupancy[self.to_move]
     }
 }
 
 /// Generate all king attack patterns at compile time.
-const fn generate_king_attacks_table() -> [Bitset; 64] {
+const fn generate_king_moves_table() -> [Bitset; 64] {
     let mut table = [Bitset(0); 64];
 
     let mut i = 0;
     while i < 64 {
         let tile = Tile::from_index(i);
-        table[i] = generate_king_attacks(tile);
+        table[i] = generate_king_moves(tile);
         i += 1;
     }
 
     table
 }
 
-const fn generate_king_attacks(tile: Tile) -> Bitset {
+const fn generate_king_moves(tile: Tile) -> Bitset {
     let square = tile.as_bitset().0;
     let not_a_file = !Board::FILE_MASKS[0].0;
     let not_h_file = !Board::FILE_MASKS[7].0;
@@ -51,74 +51,51 @@ mod attack_tests {
     #[test]
     fn test_king_center_attacks() {
         // King on d4 should attack 8 squares: c3, d3, e3, c4, e4, c5, d5, e5
-        let index = Tile::try_from("d4").unwrap().as_index();
-        let attacks = KING_ATTACKS[index];
+        let index = Tile::D4;
+        let attacks = KING_MOVES[index];
 
-        let expected = Tile::try_from("c3").unwrap()
-            | Tile::try_from("d3").unwrap()
-            | Tile::try_from("e3").unwrap()
-            | Tile::try_from("c4").unwrap()
-            | Tile::try_from("e4").unwrap()
-            | Tile::try_from("c5").unwrap()
-            | Tile::try_from("d5").unwrap()
-            | Tile::try_from("e5").unwrap();
-
+        let expected =
+            Tile::C3 | Tile::D3 | Tile::E3 | Tile::C4 | Tile::E4 | Tile::C5 | Tile::D5 | Tile::E5;
         assert_eq!(attacks, expected);
     }
 
     #[test]
     fn test_king_corner_attacks() {
         // King on a1 should attack only 3 squares: a2, b1, b2
-        let index = Tile::try_from("a1").unwrap().as_index();
-        let attacks = KING_ATTACKS[index];
+        let index = Tile::A1;
+        let attacks = KING_MOVES[index];
 
-        let expected = Tile::try_from("a2").unwrap()
-            | Tile::try_from("b1").unwrap()
-            | Tile::try_from("b2").unwrap();
-
+        let expected = Tile::A2 | Tile::B1 | Tile::B2;
         assert_eq!(attacks, expected);
     }
 
     #[test]
     fn test_king_h8_corner_attacks() {
         // King on h8 should attack only 3 squares: g8, g7, h7
-        let index = Tile::try_from("h8").unwrap().as_index();
-        let attacks = KING_ATTACKS[index];
+        let index = Tile::H8;
+        let attacks = KING_MOVES[index];
 
-        let expected = Tile::try_from("g8").unwrap()
-            | Tile::try_from("g7").unwrap()
-            | Tile::try_from("h7").unwrap();
-
+        let expected = Tile::G8 | Tile::G7 | Tile::H7;
         assert_eq!(attacks, expected);
     }
 
     #[test]
     fn test_king_edge_attacks() {
         // King on d1 (bottom edge) should attack 5 squares: c1, e1, c2, d2, e2
-        let index = Tile::try_from("d1").unwrap().as_index();
-        let attacks = KING_ATTACKS[index];
+        let index = Tile::D1;
+        let attacks = KING_MOVES[index];
 
-        let expected = Tile::try_from("c1").unwrap()
-            | Tile::try_from("e1").unwrap()
-            | Tile::try_from("c2").unwrap()
-            | Tile::try_from("d2").unwrap()
-            | Tile::try_from("e2").unwrap();
-
+        let expected = Tile::C1 | Tile::E1 | Tile::C2 | Tile::D2 | Tile::E2;
         assert_eq!(attacks, expected);
     }
 
     #[test]
     fn test_king_side_edge_attacks() {
         // King on a4 (left edge) should attack 5 squares: a3, a5, b3, b4, b5
-        let index = Tile::try_from("a4").unwrap().as_index();
-        let attacks = KING_ATTACKS[index];
+        let index = Tile::A4;
+        let attacks = KING_MOVES[index];
 
-        let expected = Tile::try_from("a3").unwrap()
-            | Tile::try_from("a5").unwrap()
-            | Tile::try_from("b3").unwrap()
-            | Tile::try_from("b4").unwrap()
-            | Tile::try_from("b5").unwrap();
-
+        let expected = Tile::A3 | Tile::A5 | Tile::B3 | Tile::B4 | Tile::B5;
         assert_eq!(attacks, expected);
     }
 }
@@ -136,9 +113,9 @@ mod generation_tests {
     fn test_king_moves_empty_board() {
         // king moves on an empty board should return all attack squares
         let board = Board::empty();
-        let king_tile = Tile::try_from("d4").unwrap();
+        let king_tile = Tile::D4;
         let moves = board.king_moves(king_tile);
-        let expected = KING_ATTACKS[king_tile.as_index()];
+        let expected = KING_MOVES[king_tile];
         assert_eq!(moves, expected);
     }
 
@@ -150,24 +127,24 @@ mod generation_tests {
                 kind: PieceKind::Pawn,
                 color: Color::White,
             },
-            Tile::try_from("c4").unwrap(),
+            Tile::C4,
         );
         board.place_unchecked(
             Piece {
                 kind: PieceKind::Pawn,
                 color: Color::White,
             },
-            Tile::try_from("d5").unwrap(),
+            Tile::D5,
         );
 
-        let king_tile = Tile::try_from("d4").unwrap();
+        let king_tile = Tile::D4;
         let moves = board.king_moves(king_tile);
 
         // king should not be able to move to squares occupied by own pieces
         assert!((moves & board.occupancy[Color::White]).is_empty());
 
         // but should still be able to move to other squares
-        let free_square = Tile::try_from("e4").unwrap();
+        let free_square = Tile::E4;
         assert!((moves & free_square.as_bitset()) != Bitset(0));
     }
 
@@ -179,17 +156,17 @@ mod generation_tests {
                 kind: PieceKind::Pawn,
                 color: Color::Black,
             },
-            Tile::try_from("c4").unwrap(),
+            Tile::C4,
         );
         board.place_unchecked(
             Piece {
                 kind: PieceKind::Pawn,
                 color: Color::Black,
             },
-            Tile::try_from("e5").unwrap(),
+            Tile::E5,
         );
 
-        let king_tile = Tile::try_from("d4").unwrap();
+        let king_tile = Tile::D4;
         let moves = board.king_moves(king_tile);
 
         // king should be able to capture enemy pieces

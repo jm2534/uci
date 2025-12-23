@@ -1,9 +1,34 @@
 use crate::game::board::{Board, bitset::Bitset};
+use paste::paste;
 use std::{
     fmt::Display,
-    ops::{BitAnd, BitOr, BitXor},
+    ops::{BitAnd, BitOr, BitXor, Index},
 };
 use thiserror::Error;
+
+// from https://stackoverflow.com/questions/71443259/possible-rust-macro-to-define-a-bunch-of-constants
+macro_rules! board {
+    // For each column, call column!() passing the details of that column
+    // and all of the rows. (This can't be done in one macro because macro
+    // repetition works like "zip", not like "cartesian product".)
+    ( ($($cols:ident $colnos:literal),*), $rows:tt ) => {
+        $( column!($cols, $colnos, $rows); )*
+    };
+}
+
+macro_rules! column {
+    ( $col:ident, $colno:literal, ($($rows:literal),*) ) => {
+        $(
+            paste! {
+                // [< >] are special brackets that tell the `paste!` macro to
+                // paste together all the pieces appearing within them into
+                // a single identifier.
+                #[allow(dead_code)]
+                pub const [< $col $rows >]: Tile = Tile::from_index($colno + (($rows - 1) * 8));
+            }
+        )*
+    };
+}
 
 /// Represents a tile on a chessboard. Implements common set-wise operations for
 /// bitset interactions.
@@ -11,6 +36,8 @@ use thiserror::Error;
 pub struct Tile(Bitset);
 
 impl Tile {
+    board!((A 0, B 1, C 2, D 3, E 4, F 5, G 6, H 7), (1, 2, 3, 4, 5, 6, 7, 8));
+
     /// Create a new tile from (zero-indexed) rank and file.
     /// Saturates at the maximum rank and file values, meaning that if the rank
     /// or file is greater than or equal to the maximum dimension of the board,
@@ -110,6 +137,14 @@ impl Display for Tile {
             char::from_u32((self.file() as u32) + ('a' as u32)).unwrap(),
             self.rank() + 1 // zero -> one indexing
         )
+    }
+}
+
+impl<T> Index<Tile> for [T] {
+    type Output = T;
+
+    fn index(&self, index: Tile) -> &Self::Output {
+        &self[index.as_index()]
     }
 }
 
@@ -256,6 +291,13 @@ mod tests {
     use anyhow::Result;
 
     #[test]
+    fn test_tile_macro() {
+        assert_eq!(Tile::A1, Tile::from_index(0));
+        assert_eq!(Tile::A2, Tile::from_index(8));
+        assert_eq!(Tile::H8, Tile::from_index(63));
+    }
+
+    #[test]
     fn test_tile_display() -> Result<()> {
         let value = "a2";
 
@@ -273,7 +315,7 @@ mod tests {
             let value = "a2";
 
             let tile = Tile::try_from(value)?;
-            assert_eq!(tile, Tile::new(1, 0));
+            assert_eq!(tile, Tile::A2);
             Ok(())
         }
 

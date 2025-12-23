@@ -330,16 +330,24 @@ impl Board {
                 let moveset = match piece.kind {
                     PieceKind::Pawn => self.pawn_moves(start),
                     PieceKind::Knight => self.knight_moves(start),
-                    PieceKind::Bishop => todo!(),
-                    PieceKind::Rook => todo!(),
-                    PieceKind::Queen => todo!(),
+                    PieceKind::Bishop => Bitset(0),
+                    PieceKind::Rook => Bitset(0),
+                    PieceKind::Queen => Bitset(0),
                     PieceKind::King => self.king_moves(start),
                 };
 
                 if moveset.contains(stop) {
-                    self.place_unchecked(piece, stop);
-                    // TODO: captures, promotions, castling, etc.
-                    Ok(MoveKind::Quiet)
+                    self.positions[piece.kind] |= stop;
+                    self.positions[piece.kind] ^= start;
+                    self.occupancy[piece.color] |= start;
+                    self.occupancy[piece.color] ^= stop;
+
+                    let captured = self.occupants[stop.as_index()];
+                    self.occupants[stop.as_index()] = Some(piece);
+                    self.occupants[start.as_index()] = None;
+                    self.to_move = !self.to_move;
+
+                    Ok(captured.map(MoveKind::Capture).unwrap_or(MoveKind::Quiet))
                 } else {
                     Err(MoveError::IllegalMove(attempt))
                 }

@@ -7,7 +7,7 @@ use crate::game::{
 };
 
 /// Pre-computed pawn attack patterns indexed by [color][square].
-pub const PAWN_ATTACKS: [[Bitset; 64]; 2] = generate_pawn_attacks_table();
+pub const PAWN_MOVES: [[Bitset; 64]; 2] = generate_pawn_attacks_table();
 
 impl Board {
     /// Generate all pseudo-legal moves assuming a pawn at the given tile.
@@ -48,7 +48,7 @@ impl Board {
         // TODO: Add en passant captures when board state supports it
         // can only capture squares with enemy pieces
         let enemy_occupied = self.occupancy[!self.to_move];
-        let attack_pattern = PAWN_ATTACKS[self.to_move as usize][tile.as_index()];
+        let attack_pattern = PAWN_MOVES[self.to_move as usize][tile];
         attack_pattern & enemy_occupied
     }
 }
@@ -90,44 +90,44 @@ mod attack_tests {
     #[test]
     fn test_white_pawn_center_attacks() {
         // white pawn on d4 should attack c5 and e5
-        let index = Tile::try_from("d4").unwrap().as_index();
-        let attacks = PAWN_ATTACKS[Color::White as usize][index];
-        let expected = Tile::try_from("c5").unwrap() | Tile::try_from("e5").unwrap();
+        let index = Tile::D4;
+        let attacks = PAWN_MOVES[Color::White][index];
+        let expected = Tile::C5 | Tile::E5;
         assert_eq!(attacks, expected);
     }
 
     #[test]
     fn test_black_pawn_center_attacks() {
         // black pawn on d5 should attack c4 and e4
-        let index = Tile::try_from("d5").unwrap().as_index();
-        let attacks = PAWN_ATTACKS[Color::Black as usize][index];
-        let expected = Tile::try_from("c4").unwrap() | Tile::try_from("e4").unwrap();
+        let index = Tile::D5;
+        let attacks = PAWN_MOVES[Color::Black][index];
+        let expected = Tile::C4 | Tile::E4;
         assert_eq!(attacks, expected);
     }
 
     #[test]
     fn test_white_pawn_file_edge_attack() {
         // white pawn on a4 should attack b5
-        let index = Tile::try_from("a4").unwrap().as_index();
-        let attacks = PAWN_ATTACKS[Color::White as usize][index];
-        let expected = Tile::try_from("b5").unwrap().as_bitset();
+        let index = Tile::A4;
+        let attacks = PAWN_MOVES[Color::White][index];
+        let expected = Tile::B5.as_bitset();
         assert_eq!(attacks, expected);
     }
 
     #[test]
     fn test_black_pawn_file_edge_attack() {
         // black pawn on a5 should attack b4
-        let index = Tile::try_from("a5").unwrap().as_index();
-        let attacks = PAWN_ATTACKS[Color::Black as usize][index];
-        let expected = Tile::try_from("b4").unwrap().as_bitset();
+        let index = Tile::A5;
+        let attacks = PAWN_MOVES[Color::Black][index];
+        let expected = Tile::B4.as_bitset();
         assert_eq!(attacks, expected);
     }
 
     #[test]
     fn test_white_pawn_rank_edge_attacks() {
         // white pawn on last rank should not attack
-        let index = Tile::try_from("h8").unwrap().as_index();
-        let attacks = PAWN_ATTACKS[Color::White as usize][index];
+        let index = Tile::H8;
+        let attacks = PAWN_MOVES[Color::White][index];
         let expected = Bitset(0);
         assert_eq!(attacks, expected);
     }
@@ -135,8 +135,8 @@ mod attack_tests {
     #[test]
     fn test_black_pawn_rank_edge_attacks() {
         // black pawn on a5 should attack b4
-        let index = Tile::try_from("a1").unwrap().as_index();
-        let attacks = PAWN_ATTACKS[Color::Black as usize][index];
+        let index = Tile::A1;
+        let attacks = PAWN_MOVES[Color::Black][index];
         let expected = Bitset(0);
         assert_eq!(attacks, expected);
     }
@@ -156,13 +156,13 @@ mod generation_tests {
         board.to_move = Color::White;
 
         // Place a white pawn on e4 (not starting rank)
-        let pawn_tile = Tile::try_from("e4").unwrap();
+        let pawn_tile = Tile::E4;
         board.occupancy[Color::White] = pawn_tile.as_bitset();
 
         let moves = board.pawn_moves(pawn_tile);
 
         // Should only be able to push to e5 (single push)
-        let expected = Tile::try_from("e5").unwrap().as_bitset();
+        let expected = Tile::E5.as_bitset();
         assert_eq!(moves, expected);
     }
 
@@ -175,13 +175,13 @@ mod generation_tests {
         board.to_move = Color::White;
 
         // Place a white pawn on e2 (starting rank)
-        let pawn_tile = Tile::try_from("e2").unwrap();
+        let pawn_tile = Tile::E2;
         board.occupancy[Color::White] = pawn_tile.as_bitset();
 
         let moves = board.pawn_moves(pawn_tile);
 
         // Should be able to push to both e3 and e4 (single and double push)
-        let expected = Tile::try_from("e3").unwrap() | Tile::try_from("e4").unwrap();
+        let expected = Tile::E3 | Tile::E4;
         assert_eq!(moves, expected);
     }
 
@@ -194,13 +194,13 @@ mod generation_tests {
         board.to_move = Color::Black;
 
         // Place a black pawn on d5 (not starting rank)
-        let pawn_tile = Tile::try_from("d5").unwrap();
+        let pawn_tile = Tile::D5;
         board.occupancy[Color::Black] = pawn_tile.as_bitset();
 
         let moves = board.pawn_moves(pawn_tile);
 
         // Should only be able to push to d4 (single push for black)
-        let expected = Tile::try_from("d4").unwrap().as_bitset();
+        let expected = Tile::D4.as_bitset();
         assert_eq!(moves, expected);
     }
 
@@ -213,17 +213,17 @@ mod generation_tests {
         board.to_move = Color::White;
 
         // Place a white pawn on d4
-        let pawn_tile = Tile::try_from("d4").unwrap();
+        let pawn_tile = Tile::D4;
         board.occupancy[Color::White] = pawn_tile.as_bitset();
 
         // Place black pieces on diagonal capture squares
-        let enemy_squares = Tile::try_from("c5").unwrap() | Tile::try_from("e5").unwrap();
+        let enemy_squares = Tile::C5 | Tile::E5;
         board.occupancy[Color::Black] = enemy_squares;
 
         let moves = board.pawn_moves(pawn_tile);
 
         // Should be able to push forward and capture diagonally
-        let expected = Tile::try_from("d5").unwrap() | enemy_squares;
+        let expected = Tile::D5 | enemy_squares;
         assert_eq!(moves, expected);
     }
 
@@ -236,11 +236,11 @@ mod generation_tests {
         board.to_move = Color::White;
 
         // Place a white pawn on e2 (starting rank)
-        let pawn_tile = Tile::try_from("e2").unwrap();
+        let pawn_tile = Tile::E2;
         board.occupancy[Color::White] = pawn_tile.as_bitset();
 
         // Block the single push square with any piece
-        let blocking_square = Tile::try_from("e3").unwrap();
+        let blocking_square = Tile::E3;
         board.occupancy[Color::Black] = blocking_square.as_bitset();
 
         let moves = board.pawn_moves(pawn_tile);
@@ -258,34 +258,34 @@ mod generation_tests {
         board.to_move = Color::White;
 
         // Test pawn on A file
-        let a_pawn_tile = Tile::try_from("a4").unwrap();
+        let a_pawn_tile = Tile::A4;
         board.occupancy[Color::White] = a_pawn_tile.as_bitset();
 
         // Place enemy piece on the only valid capture square
-        let enemy_square = Tile::try_from("b5").unwrap();
+        let enemy_square = Tile::B5;
         board.occupancy[Color::Black] = enemy_square.as_bitset();
 
         let moves = board.pawn_moves(a_pawn_tile);
 
         // Should be able to push forward and capture to the right only
-        let expected = Tile::try_from("a5").unwrap() | enemy_square;
+        let expected = Tile::A5 | enemy_square;
         assert_eq!(moves, expected);
 
         // Test pawn on H file
         board.occupancy[Color::White] = Bitset(0);
         board.occupancy[Color::Black] = Bitset(0);
 
-        let h_pawn_tile = Tile::try_from("h4").unwrap();
+        let h_pawn_tile = Tile::H4;
         board.occupancy[Color::White] = h_pawn_tile.as_bitset();
 
         // Place enemy piece on the only valid capture square
-        let enemy_square = Tile::try_from("g5").unwrap();
+        let enemy_square = Tile::G5;
         board.occupancy[Color::Black] = enemy_square.as_bitset();
 
         let moves = board.pawn_moves(h_pawn_tile);
 
         // Should be able to push forward and capture to the left only
-        let expected = Tile::try_from("h5").unwrap() | enemy_square;
+        let expected = Tile::H5 | enemy_square;
         assert_eq!(moves, expected);
     }
 }

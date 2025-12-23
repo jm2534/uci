@@ -254,15 +254,15 @@ mod tests {
 
         // moves e2e4, c7c5, g1f3
         assert_eq!(
-            board.occupant(Tile::try_from("e4").unwrap()).unwrap(),
+            board.occupant(Tile::E4).unwrap(),
             Piece::try_from('P').unwrap()
         );
         assert_eq!(
-            board.occupant(Tile::try_from("c5").unwrap()).unwrap(),
+            board.occupant(Tile::C5).unwrap(),
             Piece::try_from('p').unwrap()
         );
         assert_eq!(
-            board.occupant(Tile::try_from("f3").unwrap()).unwrap(),
+            board.occupant(Tile::F3).unwrap(),
             Piece::try_from('N').unwrap()
         );
 
