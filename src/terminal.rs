@@ -9,6 +9,7 @@ use crossterm::{
 use inquire::{InquireError, Select};
 use std::io::{self, stdout};
 use thiserror::Error;
+use tracing::{Level, debug, event, instrument, span};
 use uci::command::Command;
 use uci::{
     engine::{Engine, strategy::minimax::Minimax},
@@ -19,8 +20,6 @@ use uci::{
         piece::Piece,
     },
 };
-
-use crate::terminal::render::draw_interactive_board;
 
 /// Prompts the user for the color they intend to play as.
 /// This temporarily switches back to normal terminal mode for the prompt.
@@ -112,14 +111,14 @@ impl TryFrom<Event> for Action {
 }
 
 pub struct Game {
-    state: InteractiveState,
+    state: State,
     engine: Engine<Minimax>,
 }
 
 impl Game {
     pub fn new(player: Color) -> Self {
         let engine = Engine::default();
-        let state = InteractiveState::new(player);
+        let state = State::new(player);
         Self { state, engine }
     }
 
@@ -181,7 +180,7 @@ impl Game {
 
 /// Represents the current state of the interactive UI
 #[derive(Debug, Clone)]
-pub struct InteractiveState {
+pub struct State {
     /// Current cursor position on the board
     pub cursor_pos: Tile,
 
@@ -198,7 +197,7 @@ pub struct InteractiveState {
     pub active: bool,
 }
 
-impl InteractiveState {
+impl State {
     pub fn new(player: Color) -> Self {
         Self {
             cursor_pos: match player {
@@ -213,6 +212,7 @@ impl InteractiveState {
     }
 
     /// Move cursor in the specified direction
+    #[instrument(level = Level::DEBUG, skip_all, fields(direction = ?direction, cursor_pos = %self.cursor_pos))]
     pub fn move_cursor(&mut self, direction: Direction) {
         let (rank, file) = (self.cursor_pos.rank(), self.cursor_pos.file());
 
@@ -252,25 +252,30 @@ impl InteractiveState {
         };
 
         self.cursor_pos = new_pos;
+        debug!(cursor_pos = %self.cursor_pos, "set cursor position");
     }
 
     /// Select or deselect piece at cursor position
+    #[instrument(level = Level::DEBUG, skip_all, fields(cursor_pos = %self.cursor_pos))]
     pub fn toggle_selection(&mut self, board: &Board) -> SelectionResult {
         if let Some(selected) = self.selected_pos {
             // If we have a selection, either move or deselect
             if selected == self.cursor_pos {
                 // deselect current piece
+                debug!(piece = ?board.occupant(selected), position = %selected, "Deselecting piece");
                 self.selected_pos = None;
                 self.available_moves.clear();
                 SelectionResult::Deselected
             } else {
                 // try to make a move
                 let attempted_move = Move::new(selected, self.cursor_pos);
+                debug!(piece = ?board.occupant(selected), position = %selected, attempt = %attempted_move, "Attempting move");
                 if self.available_moves.contains(&attempted_move) {
                     self.selected_pos = None;
                     self.available_moves.clear();
                     SelectionResult::MoveMade(attempted_move)
                 } else {
+                    debug!(moveset = ?self.available_moves, "Move not in moveset");
                     // try to select piece at cursor
                     self.try_select_piece(board)
                 }
@@ -281,8 +286,10 @@ impl InteractiveState {
         }
     }
 
+    #[instrument(level = Level::DEBUG, skip_all, fields(cursor_pos = %self.cursor_pos))]
     fn try_select_piece(&mut self, board: &Board) -> SelectionResult {
         if let Some(piece) = board.occupant(self.cursor_pos) {
+            debug!("Selected piece: {:?}", piece);
             if piece.color == board.to_move() {
                 // Valid piece to select
                 self.selected_pos = Some(self.cursor_pos);
@@ -313,9 +320,24 @@ impl InteractiveState {
     }
 }
 
+/// Initialize terminal for interactive use
+pub fn init_terminal() -> io::Result<()> {
+    terminal::enable_raw_mode()?;
+    execute!(stdout(), Hide)?;
+    Ok(())
+}
+
+/// Restore terminal to normal state
+pub fn cleanup_terminal() -> io::Result<()> {
+    execute!(stdout(), Show, ResetColor)?;
+    terminal::disable_raw_mode()?;
+    Ok(())
+}
+
 /// Enhanced rendering with highlighting support
-mod render {
+pub(super) mod render {
     use crossterm::style;
+    use tracing::{Level, event, span};
 
     use super::*;
     use std::io::Write;
@@ -342,9 +364,8 @@ mod render {
     }
 
     /// Draws the board with interactive highlighting
-    pub fn draw_interactive_board(board: &Board, state: &InteractiveState) -> io::Result<()> {
+    pub fn draw_interactive_board(board: &Board, state: &State) -> io::Result<()> {
         clear()?;
-
         let mut stdout = stdout();
 
         // title and instructions
@@ -358,11 +379,12 @@ mod render {
         stdout.queue(Print(format!("Turn: {:?}", board.to_move())))?;
 
         // top-left corner of board display (note: not board itself)
-        let start_row = 5;
+        let start_row = 4;
         let start_col = 4;
 
         // column labels, shifted to accomodate row labels and board edge
-        stdout.queue(MoveTo(start_col + 3, start_row - 1))?;
+        let mut current_row = start_row;
+        stdout.queue(MoveTo(start_col + 4, current_row))?;
         let file_labels = if state.player == Color::White {
             "a b c d e f g h"
         } else {
@@ -371,73 +393,77 @@ mod render {
         stdout.queue(Print(file_labels))?;
 
         // top border
-        stdout.queue(MoveTo(start_col, start_row))?;
+        current_row += 1;
+        stdout.queue(MoveTo(start_col, current_row))?;
         stdout.queue(Print("  ┌─────────────────┐"))?;
+        current_row += 1;
 
-        // board rows
-        let board_array = board.occupants();
-        let mut visual_board = [None; 64];
-        visual_board.copy_from_slice(board_array);
+        // visual_board: flattened board *as seen by the player*
+        let mut visual_board = board.occupants().to_owned();
         if state.player == Color::White {
             // rendering board top-down, so pieces (bottom-up) need to be reversed for white's perspective
             visual_board.reverse();
         }
 
-        for (visual_row, pieces) in visual_board.chunks(8).enumerate() {
-            let board_row = start_row + 1 + visual_row as u16;
+        let mut pieces_to_draw = Vec::with_capacity(Board::MAX_DIM.into());
+        for (i, pieces) in visual_board.chunks(Board::MAX_DIM.into()).enumerate() {
+            let row_span = span!(Level::DEBUG, "row", player = %state.player, row = i);
+            let _guard = row_span.enter();
 
-            // row label
-            stdout.queue(MoveTo(start_col, board_row))?;
+            // left rank labels
+            stdout.queue(MoveTo(start_col, current_row))?;
             let rank_label = match state.player {
-                Color::White => 8 - visual_row,
-                Color::Black => visual_row + 1,
+                Color::White => Board::MAX_DIM as usize - i,
+                Color::Black => i + 1,
             };
-            stdout.queue(Print(format!("{} │", rank_label)))?;
+            stdout.queue(Print(format!("{} │ ", rank_label)))?;
 
-            // pieces in this row
-            let pieces_to_draw = if state.player == Color::White {
-                pieces.to_vec()
-            } else {
-                let mut rev = pieces.to_vec();
-                rev.reverse();
-                rev
-            };
+            // pieces
+            pieces_to_draw.clear();
+            pieces_to_draw.extend_from_slice(pieces);
+            pieces_to_draw.reverse();
+            for (j, piece) in pieces_to_draw.iter().enumerate() {
+                let tile_span = span!(parent: &row_span, Level::TRACE, "tile", col = j);
+                let _guard = tile_span.enter();
 
-            // TODO: fix
-            for (file_idx, piece) in pieces_to_draw.iter().enumerate() {
-                let tile_rank = match state.player {
-                    Color::White => (7 - visual_row) as u8,
-                    Color::Black => visual_row as u8,
+                let rank = match state.player {
+                    Color::White => Board::MAX_DIM - 1 - (i as u8),
+                    Color::Black => i as u8,
                 };
-                let tile_file = match state.player {
-                    Color::White => file_idx as u8,
-                    Color::Black => (7 - file_idx) as u8,
+                let file = match state.player {
+                    Color::White => j as u8,
+                    Color::Black => Board::MAX_DIM - 1 - (j as u8),
                 };
-                let current_tile = Tile::new(tile_rank, tile_file);
 
-                // Determine square state
+                let current_tile = Tile::new(rank, file);
+                event!(parent: &tile_span, Level::TRACE, rank, file, tile = %current_tile, occupant = ?board.occupant(current_tile), "identified tile");
+
                 let square_state = get_square_state(current_tile, state);
-
-                // Set colors based on state
                 apply_square_colors(&mut stdout, square_state)?;
 
-                // Draw piece or empty square
+                // draw piece or empty square
                 let piece_char = piece.map_or('\u{00B7}', to_unicode);
-                stdout.queue(Print(format!("{} ", piece_char)))?;
+                if let Some(piece) = piece {
+                    event!(parent: &tile_span, Level::TRACE, tile = %current_tile, ?piece, occupant = ?board.occupant(current_tile), "identified piece");
+                }
 
+                stdout.queue(Print(format!("{} ", piece_char)))?;
                 stdout.queue(ResetColor)?;
             }
 
-            // right border
+            // right edge
             stdout.queue(Print("│"))?;
+
+            current_row += 1;
         }
 
         // bottom border
-        stdout.queue(MoveTo(start_col, start_row + 9))?;
+        stdout.queue(MoveTo(start_col, current_row))?;
         stdout.queue(Print("  └─────────────────┘"))?;
 
         // status information
-        stdout.queue(MoveTo(0, start_row + 11))?;
+        current_row += 1;
+        stdout.queue(MoveTo(0, current_row))?;
         if let Some(selected) = state.selected_pos {
             stdout.queue(Print(format!(
                 "Selected: {} ({} moves available)",
@@ -450,14 +476,15 @@ mod render {
             stdout.queue(Print("No piece selected"))?;
         }
 
-        stdout.queue(MoveTo(0, start_row + 12))?;
+        current_row += 1;
+        stdout.queue(MoveTo(0, current_row))?;
         stdout.queue(Print(format!("Cursor: {}", state.cursor_pos)))?;
 
         stdout.flush()?;
         Ok(())
     }
 
-    fn get_square_state(tile: Tile, state: &InteractiveState) -> SquareState {
+    fn get_square_state(tile: Tile, state: &State) -> SquareState {
         let is_cursor = tile == state.cursor_pos;
         let is_selected = state.selected_pos == Some(tile);
         let is_available = state.is_available_move(tile);
@@ -501,10 +528,10 @@ mod render {
         Ok(())
     }
 
-    /// Returns the unicode representation of a piece
+    /// Returns the unicode representation of a piece.
+    /// NOTE: when comparing these mappings to their Unicode names, Unicode "black" vs. "white"
+    /// indicates fill, not piece color as returned here.
     fn to_unicode(piece: Piece) -> char {
-        // NOTE: when comparing these mappings to their Unicode names, Unicode
-        // "black" vs. "white" indicates fill, not piece color as used below.
         let unicode_hex = match (piece.kind, piece.color) {
             (PieceKind::King, Color::Black) => 0x2654,
             (PieceKind::King, Color::White) => 0x265A,
@@ -521,18 +548,4 @@ mod render {
         };
         char::from_u32(unicode_hex).unwrap_or('?')
     }
-}
-
-/// Initialize terminal for interactive use
-pub fn init_terminal() -> io::Result<()> {
-    terminal::enable_raw_mode()?;
-    execute!(stdout(), Hide)?;
-    Ok(())
-}
-
-/// Restore terminal to normal state
-pub fn cleanup_terminal() -> io::Result<()> {
-    execute!(stdout(), Show, ResetColor)?;
-    terminal::disable_raw_mode()?;
-    Ok(())
 }
