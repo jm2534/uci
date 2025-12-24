@@ -18,9 +18,9 @@ use super::moves::{Move, MoveKind};
 use tile::Tile;
 
 #[derive(Error, Copy, Clone, PartialEq, Eq, Debug)]
-pub enum MoveError {
-    #[error("Move {0} is not legal")]
-    IllegalMove(Move),
+pub enum IllegalMove {
+    #[error("Move {0} is not in the moveset the target piece")]
+    NotPossible(Move),
 
     #[error("Piece {0:?} is not owned by the moving player")]
     UnownedPiece(Piece),
@@ -309,7 +309,7 @@ impl Board {
 
     /// Returns `true` if `tile` is occupied, and `false` otherwise.
     pub fn occupied(&self, tile: Tile) -> bool {
-        !((self.occupancy[0] | self.occupancy[1]) & tile).is_empty()
+        self.occupant(tile).is_some()
     }
 
     /// Returns the piece occupying `tile` if any, and `None` otherwise.
@@ -318,7 +318,7 @@ impl Board {
     }
 
     /// Tries to make `attempt` on the given board, returning the kind of move (or error) that occurred.
-    pub fn try_move(&mut self, attempt: Move) -> Result<MoveKind, MoveError> {
+    pub fn try_move(&mut self, attempt: Move) -> Result<MoveKind, IllegalMove> {
         let start = attempt.start();
         let stop = attempt.stop();
         match self.occupants[start.as_index()] {
@@ -334,10 +334,10 @@ impl Board {
                 };
 
                 if moveset.contains(stop) {
-                    self.positions[piece.kind] |= stop;
-                    self.positions[piece.kind] ^= start;
-                    self.occupancy[piece.color] |= start;
-                    self.occupancy[piece.color] ^= stop;
+                    self.positions[piece.kind] ^= stop;
+                    self.positions[piece.kind] |= start;
+                    self.occupancy[piece.color] ^= start;
+                    self.occupancy[piece.color] |= stop;
 
                     let captured = self.occupants[stop.as_index()];
                     self.occupants[stop.as_index()] = Some(piece);
@@ -346,11 +346,11 @@ impl Board {
 
                     Ok(captured.map(MoveKind::Capture).unwrap_or(MoveKind::Quiet))
                 } else {
-                    Err(MoveError::IllegalMove(attempt))
+                    Err(IllegalMove::NotPossible(attempt))
                 }
             }
-            Some(piece) => Err(MoveError::UnownedPiece(piece)),
-            None => Err(MoveError::NonexistentPiece(attempt.stop())),
+            Some(piece) => Err(IllegalMove::UnownedPiece(piece)),
+            None => Err(IllegalMove::NonexistentPiece(attempt.stop())),
         }
     }
 
@@ -445,6 +445,7 @@ impl Iterator for PieceMoves {
 #[cfg(test)]
 mod board_tests {
     use super::Board;
+    use crate::game::Move;
     use crate::game::color::Color;
     use crate::{
         game::board::{
@@ -533,5 +534,32 @@ mod board_tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_try_move() {
+        let mut board = Board::new();
+
+        // kings pawn for white then black
+        let attempt = Move::new(Tile::E2, Tile::E4);
+        board.try_move(attempt).unwrap();
+
+        assert_eq!(board.to_move, Color::Black);
+        assert!(!board.occupied(attempt.start()));
+        assert_eq!(
+            board.occupant(attempt.stop()),
+            Some(Piece {
+                kind: PieceKind::Pawn,
+                color: Color::White
+            })
+        );
+        assert!(board.occupied(attempt.stop()));
+        assert_eq!(
+            board.occupant(attempt.stop()),
+            Some(Piece {
+                kind: PieceKind::Pawn,
+                color: Color::White
+            })
+        );
     }
 }

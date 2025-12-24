@@ -8,7 +8,7 @@ const AUTHOR: &str = env!("CARGO_PKG_AUTHORS");
 
 use crate::{
     command::Command,
-    game::board::{Board, MoveError},
+    game::board::{Board, IllegalMove},
 };
 
 pub struct Engine<S: Strategy> {
@@ -41,7 +41,7 @@ impl<S: Strategy> Engine<S> {
         self.board.winner().is_some()
     }
 
-    pub fn handle(&mut self, command: Command) -> Result<Option<String>, MoveError> {
+    pub fn handle(&mut self, command: Command) -> Result<Option<String>, IllegalMove> {
         let response = match command {
             Command::Uci => Ok(Some(format!(
                 "id name {NAME}-{VERSION}\nid author {AUTHOR}\nuciok"

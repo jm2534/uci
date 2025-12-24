@@ -32,7 +32,7 @@ const fn generate_king_moves(tile: Tile) -> Bitset {
     let not_a_file = !Board::FILE_MASKS[0].0;
     let not_h_file = !Board::FILE_MASKS[7].0;
 
-    let attacks = ((square << 8)) // north
+    let moves = ((square << 8)) // north
                 | ((square >> 8)) // south
                 | ((square << 1) & not_a_file) // east
                 | ((square >> 1) & not_h_file) // west
@@ -41,7 +41,7 @@ const fn generate_king_moves(tile: Tile) -> Bitset {
                 | ((square >> 7) & not_a_file) // southeast
                 | ((square >> 9) & not_h_file); // southwest
 
-    Bitset(attacks)
+    Bitset(moves)
 }
 
 #[cfg(test)]
@@ -104,6 +104,7 @@ mod attack_tests {
 mod generation_tests {
     use super::*;
     use crate::game::{
+        Move,
         board::Board,
         color::Color,
         piece::{Piece, PieceKind},
@@ -121,31 +122,17 @@ mod generation_tests {
 
     #[test]
     fn test_king_moves_blocked_by_own_pieces() {
-        let mut board = Board::empty();
-        board.place_unchecked(
-            Piece {
-                kind: PieceKind::Pawn,
-                color: Color::White,
-            },
-            Tile::C4,
+        let mut board = Board::new();
+
+        // kings pawn for white then black
+        board.try_move(Move::new(Tile::E2, Tile::E4)).unwrap();
+        board.try_move(Move::new(Tile::E7, Tile::E5)).unwrap();
+
+        assert_eq!(
+            KING_MOVES[Tile::E1.as_index()],
+            Tile::D1 | Tile::D2 | Tile::E2 | Tile::F2 | Tile::F1
         );
-        board.place_unchecked(
-            Piece {
-                kind: PieceKind::Pawn,
-                color: Color::White,
-            },
-            Tile::D5,
-        );
-
-        let king_tile = Tile::D4;
-        let moves = board.king_moves(king_tile);
-
-        // king should not be able to move to squares occupied by own pieces
-        assert!((moves & board.occupancy[Color::White]).is_empty());
-
-        // but should still be able to move to other squares
-        let free_square = Tile::E4;
-        assert!((moves & free_square.as_bitset()) != Bitset(0));
+        assert_eq!(board.king_moves(Tile::E1), Tile::E2.as_bitset());
     }
 
     #[test]
