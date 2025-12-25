@@ -96,7 +96,7 @@ impl TryFrom<&str> for Command {
                                 .next()
                                 .ok_or(CommandError::UnrecognizedCommand(value.to_owned()))?;
 
-                            let board = Board::try_from(fenstring).map_err(|e| {
+                            let board = Board::try_from(fenstring).map_err(|_| {
                                 CommandError::UnrecognizedArgument(fenstring.to_owned())
                             })?;
 

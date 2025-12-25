@@ -6,7 +6,10 @@ pub mod tile;
 pub use fen::ParseBoardError;
 
 use crate::game::{
-    board::tile::Tiles,
+    board::{
+        generation::{bishop, rook},
+        tile::Tiles,
+    },
     color::Color,
     piece::{Piece, PieceKind},
 };
@@ -161,6 +164,9 @@ pub struct Board {
     /// Player to move
     to_move: Color,
 
+    /// Pinned pieces for both players
+    pinned: Bitset,
+
     /// Player's castling rights
     castling_rights: CastlingRights,
 }
@@ -226,20 +232,20 @@ impl Board {
             }
         }
 
-        let board = Self {
+        Self {
             occupants,
+            positions,
+            pinned: Bitset(0),
             occupancy: [black, white],
-            positions: positions,
             to_move: Color::White,
             castling_rights: CastlingRights::default(),
-        };
-
-        board
+        }
     }
 
     /// Creates an empty board, i.e. one with no pieces placed and white to move.
     pub fn empty() -> Self {
         Board {
+            pinned: Bitset(0),
             occupants: [None; 64],
             occupancy: [Bitset(0), Bitset(0)],
             positions: Position::empty(),
@@ -257,7 +263,7 @@ impl Board {
         match depth {
             0 => 1,
             d => {
-                for action in self.possible_moves() {
+                for (_, action) in self.possible_moves(self.to_move) {
                     let mut board = self.clone();
                     board.try_move(action).unwrap();
                     board.to_move = !board.to_move;
@@ -282,29 +288,101 @@ impl Board {
         self.castling_rights
     }
 
-    /// Yields all legal moves for the current player.
-    pub fn possible_moves<'a>(&'a self) -> impl Iterator<Item = Move> + 'a {
-        // TODO: handle psuedo-legality of current moves
-        enum_iterator::all().flat_map(|kind| {
+    /// Returns a bitboard of all valid destination squares for the piece at the given tile.
+    pub fn moves_from_tile(&self, tile: Tile, piece_kind: PieceKind) -> Bitset {
+        match piece_kind {
+            PieceKind::Pawn => self.pawn_moves(tile),
+            PieceKind::Knight => self.knight_moves(tile),
+            PieceKind::Bishop => self.bishop_moves(tile),
+            PieceKind::Rook => self.rook_moves(tile),
+            PieceKind::Queen => self.queen_moves(tile),
+            PieceKind::King => self.king_moves(tile),
+        }
+    }
+
+    /// Yields all pseudo-legal moves for the indicated player `by`. Note that it may not be `by`'s turn.
+    fn psuedo_legal_moves<'a>(&'a self, by: Color) -> impl Iterator<Item = (PieceKind, Move)> + 'a {
+        enum_iterator::all().flat_map(move |kind| {
             PieceKindMoves {
                 board: self,
                 kind,
-                tiles: (self.positions[kind] & self.occupancy[self.to_move]).tiles(),
+                tiles: (self.positions[kind] & self.occupancy[by]).tiles(),
             }
             .flatten()
         })
     }
 
-    pub fn pieces_of(&self, color: Color) -> Vec<(Piece, Tile)> {
-        let mut pieces = Vec::with_capacity(64);
-        let player_occupancy = self.occupancy[color];
-        for (kind, set) in self.positions {
-            let player_set = set & player_occupancy;
-            for tile in player_set.tiles() {
-                pieces.push((Piece { kind, color }, tile))
-            }
+    /// Returns whether the indicated tile is attacked by the indicated player.
+    fn is_attacked(&self, tile: Tile, by: Color) -> bool {
+        // We model an attacker of a certain type as having already moved to the attacked tile,
+        // and determine whether it is able to reach its original position (pseudo-legally, since the ability
+        // the return move is "virtual" in the sense that it need only exist in the piece moveset).
+        //
+        // We do this rather than the more intuitive way of simply checking whether a proposed attack square
+        // is in the movesets of the enemy pieces because doing so would require looping through all peices,
+        // whereas here we have a fixed number of fast bitwise operations to check attacks.
+
+        // need to flip color to determine if a pawn of `by` could return from `tile`
+        if !(Self::PAWN_MOVES[!by][tile] & self.occupancy[by] & self.positions[PieceKind::Pawn])
+            .is_empty()
+        {
+            return true;
         }
-        pieces
+
+        // if a knight could get back to its previous spot from target
+        if !(Self::KNIGHT_MOVES[tile] & self.occupancy[by] & self.positions[PieceKind::Knight])
+            .is_empty()
+        {
+            return true;
+        }
+
+        // if a rook or queen could get back to one of their occupied spots via straight-line moves
+        let all_occupancy = self.occupancy[by] | self.occupancy[!by];
+        let straight_attacks = rook::magic::magic_moves(tile, all_occupancy);
+        if !(straight_attacks
+            & self.occupancy[by]
+            & (self.positions[PieceKind::Rook] | self.positions[PieceKind::Queen]))
+            .is_empty()
+        {
+            return true;
+        }
+
+        // if a bishop or queen could get back to one of their occupied spots via diagonal moves
+        let diagonal_attacks = bishop::magic::magic_moves(tile, all_occupancy);
+        if !(diagonal_attacks
+            & self.occupancy[by]
+            & (self.positions[PieceKind::Bishop] | self.positions[PieceKind::Queen]))
+            .is_empty()
+        {
+            return true;
+        }
+
+        // if a king could get back pseudo-legally to its current position
+        if !(Self::KING_MOVES[tile] & self.occupancy[by] & self.positions[PieceKind::King])
+            .is_empty()
+        {
+            return true;
+        }
+
+        false
+    }
+
+    /// Yields all legal moves for the indicated player `by`. Note that it may not be `by`'s turn.
+    pub fn possible_moves<'a>(&'a self, by: Color) -> impl Iterator<Item = (PieceKind, Move)> + 'a {
+        self.psuedo_legal_moves(by).filter(move |&(kind, attempt)| {
+            if self.pinned.contains(attempt.start()) {
+                // TODO: check move is not along pin ray
+                true
+            } else if kind == PieceKind::King {
+                // king can never move into check
+                // !self.is_attacked(attempt.stop(), by)
+                let mut temp = self.clone();
+                temp.try_move(attempt).is_ok() && !temp.is_attacked(attempt.stop(), !by)
+            } else {
+                // TODO: non-pinned, non-king psuedo-legal moves are legal if king is not in check at end of turn
+                true
+            }
+        })
     }
 
     /// Places `piece` at `tile` without checking legality.
@@ -348,10 +426,9 @@ impl Board {
                     self.occupants[start.as_index()] = None;
 
                     // capture other
-                    let captured = self.occupants[stop].and_then(|c| {
+                    let captured = self.occupants[stop].inspect(|c| {
                         self.positions[c.kind] ^= stop;
                         self.occupancy[c.color] ^= stop;
-                        Some(c)
                     });
 
                     // drop piece
@@ -368,6 +445,10 @@ impl Board {
             Some(piece) => Err(IllegalMove::UnownedPiece(piece)),
             None => Err(IllegalMove::NonexistentPiece(attempt.stop())),
         }
+    }
+
+    pub fn unmake_move(&mut self) {
+        // TODO: implement unmake_move
     }
 
     /// Returns the winner of the current board, if any. Useful for checking
@@ -469,18 +550,19 @@ impl TryFrom<&str> for Board {
 }
 
 /// Iterator over all moves of a given piece kind on a board, used internally by boards when yielding moves.
-struct PieceKindMoves<'a> {
+struct PieceKindMoves<'a, T: Iterator<Item = Tile>> {
     board: &'a Board,
     kind: PieceKind,
-    tiles: Tiles,
+    tiles: T,
 }
 
-impl<'a> Iterator for PieceKindMoves<'a> {
+impl<'a, T: Iterator<Item = Tile>> Iterator for PieceKindMoves<'a, T> {
     type Item = PieceMoves;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.tiles.next().map(|tile| PieceMoves {
             source: tile,
+            kind: self.kind,
             moves: self.board.moves_from_tile(tile, self.kind).tiles(),
         })
     }
@@ -489,15 +571,18 @@ impl<'a> Iterator for PieceKindMoves<'a> {
 /// An interator over the moves of a given piece on a board, used internally by boards when yielding moves.
 struct PieceMoves {
     moves: Tiles,
+    kind: PieceKind,
     source: Tile,
 }
 
 impl Iterator for PieceMoves {
-    type Item = Move;
+    type Item = (PieceKind, Move);
 
     fn next(&mut self) -> Option<Self::Item> {
         // TODO: handle psuedo-legality of current moves
-        self.moves.next().map(|tile| Move::new(self.source, tile))
+        self.moves
+            .next()
+            .map(|tile| (self.kind, Move::new(self.source, tile)))
     }
 }
 

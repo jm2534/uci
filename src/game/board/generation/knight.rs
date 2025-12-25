@@ -1,15 +1,15 @@
 use super::super::{Bitset, Board};
 use crate::game::board::tile::Tile;
 
-/// Pre-computed knight attack patterns indexed by square.
-/// Knights move the same regardless of color, so there is no need to distinguish between players.
-pub const KNIGHT_MOVES: [Bitset; 64] = generate_knight_moves_table();
-
 impl Board {
+    /// Pre-computed knight attack patterns indexed by square.
+    /// Knights move the same regardless of color, so there is no need to distinguish between players.
+    pub(in crate::game::board) const KNIGHT_MOVES: [Bitset; 64] = generate_knight_moves_table();
+
     /// Generate all pseudo-legal moves assuming a knight at the given tile.
     pub fn knight_moves(&self, tile: Tile) -> Bitset {
         // knights can move to any square in their attack pattern not occupied by own pieces
-        KNIGHT_MOVES[tile] & !self.occupancy[self.to_move]
+        Board::KNIGHT_MOVES[tile] & !self.occupancy[self.to_move]
     }
 }
 
@@ -49,7 +49,6 @@ const fn generate_knight_moves(tile: Tile) -> Bitset {
 
 #[cfg(test)]
 mod tests {
-    use super::super::Board;
     use super::*;
     use crate::game::Color;
 
@@ -57,7 +56,7 @@ mod tests {
     fn test_knight_center() {
         // Knight on d4 should attack 8 squares: c2, e2, b3, f3, b5, f5, c6, e6
         let index = Tile::D4;
-        let attacks = KNIGHT_MOVES[index];
+        let attacks = Board::KNIGHT_MOVES[index];
 
         let expected =
             Tile::C2 | Tile::E2 | Tile::B3 | Tile::F3 | Tile::B5 | Tile::F5 | Tile::C6 | Tile::E6;
@@ -68,7 +67,7 @@ mod tests {
     fn test_knight_corner() {
         // Knight on a1 should attack only 2 squares: b3, c2
         let index = Tile::A1;
-        let attacks = KNIGHT_MOVES[index];
+        let attacks = Board::KNIGHT_MOVES[index];
 
         let expected = Tile::B3 | Tile::C2;
 
@@ -79,7 +78,7 @@ mod tests {
     fn test_knight_edge() {
         // Knight on a4 (edge but not corner) should attack 4 squares: b2, c3, c5, b6
         let index = Tile::A4;
-        let attacks = KNIGHT_MOVES[index];
+        let attacks = Board::KNIGHT_MOVES[index];
 
         let expected = Tile::B2 | Tile::C3 | Tile::C5 | Tile::B6;
         assert_eq!(attacks, expected);
@@ -89,7 +88,7 @@ mod tests {
     fn test_knight_near_edge() {
         // Knight on b2 should attack 4 squares: a4, c4, d1, d3
         let index = Tile::B2;
-        let attacks = KNIGHT_MOVES[index];
+        let attacks = Board::KNIGHT_MOVES[index];
 
         let expected = Tile::A4 | Tile::C4 | Tile::D1 | Tile::D3;
         assert_eq!(attacks, expected);
@@ -108,7 +107,7 @@ mod tests {
         let moves = board.knight_moves(knight_tile);
 
         // Should match the attack pattern exactly since no pieces block
-        let expected = KNIGHT_MOVES[knight_tile.as_index()];
+        let expected = Board::KNIGHT_MOVES[knight_tile.as_index()];
         assert_eq!(moves, expected);
     }
 

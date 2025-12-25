@@ -1,16 +1,9 @@
-use std::isize;
-
 use super::Strategy;
 use crate::game::board::Board;
 use crate::game::moves::Move;
 
+#[derive(Default)]
 pub struct Minimax;
-
-impl Minimax {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
 
 #[derive(Eq, PartialEq)]
 struct ScoredMove {

@@ -1,15 +1,15 @@
 use super::super::{Bitset, Board};
 use crate::game::board::tile::Tile;
 
-/// Pre-computed king attack patterns indexed by square.
-/// Kings move the same regardless of color, so there is no need to distinguish between players.
-pub const KING_MOVES: [Bitset; 64] = generate_king_moves_table();
-
 impl Board {
+    /// Pre-computed king attack patterns indexed by square.
+    /// Kings move the same regardless of color, so there is no need to distinguish between players.
+    pub(in crate::game::board) const KING_MOVES: [Bitset; 64] = generate_king_moves_table();
+
     /// Generate all pseudo-legal moves assuming a king at the given tile.
     pub fn king_moves(&self, tile: Tile) -> Bitset {
         // kings can move to any square in their attack pattern not occupied by own pieces
-        KING_MOVES[tile] & !self.occupancy[self.to_move]
+        Self::KING_MOVES[tile] & !self.occupancy[self.to_move]
     }
 }
 
@@ -32,8 +32,8 @@ const fn generate_king_moves(tile: Tile) -> Bitset {
     let not_a_file = !Board::FILE_MASKS[0].0;
     let not_h_file = !Board::FILE_MASKS[7].0;
 
-    let moves = ((square << 8)) // north
-                | ((square >> 8)) // south
+    let moves = (square << 8) // north
+                | (square >> 8) // south
                 | ((square << 1) & not_a_file) // east
                 | ((square >> 1) & not_h_file) // west
                 | ((square << 9) & not_a_file) // northeast
@@ -52,7 +52,7 @@ mod attack_tests {
     fn test_king_center_attacks() {
         // King on d4 should attack 8 squares: c3, d3, e3, c4, e4, c5, d5, e5
         let index = Tile::D4;
-        let attacks = KING_MOVES[index];
+        let attacks = Board::KING_MOVES[index];
 
         let expected =
             Tile::C3 | Tile::D3 | Tile::E3 | Tile::C4 | Tile::E4 | Tile::C5 | Tile::D5 | Tile::E5;
@@ -63,7 +63,7 @@ mod attack_tests {
     fn test_king_corner_attacks() {
         // King on a1 should attack only 3 squares: a2, b1, b2
         let index = Tile::A1;
-        let attacks = KING_MOVES[index];
+        let attacks = Board::KING_MOVES[index];
 
         let expected = Tile::A2 | Tile::B1 | Tile::B2;
         assert_eq!(attacks, expected);
@@ -73,7 +73,7 @@ mod attack_tests {
     fn test_king_h8_corner_attacks() {
         // King on h8 should attack only 3 squares: g8, g7, h7
         let index = Tile::H8;
-        let attacks = KING_MOVES[index];
+        let attacks = Board::KING_MOVES[index];
 
         let expected = Tile::G8 | Tile::G7 | Tile::H7;
         assert_eq!(attacks, expected);
@@ -83,7 +83,7 @@ mod attack_tests {
     fn test_king_edge_attacks() {
         // King on d1 (bottom edge) should attack 5 squares: c1, e1, c2, d2, e2
         let index = Tile::D1;
-        let attacks = KING_MOVES[index];
+        let attacks = Board::KING_MOVES[index];
 
         let expected = Tile::C1 | Tile::E1 | Tile::C2 | Tile::D2 | Tile::E2;
         assert_eq!(attacks, expected);
@@ -93,7 +93,7 @@ mod attack_tests {
     fn test_king_side_edge_attacks() {
         // King on a4 (left edge) should attack 5 squares: a3, a5, b3, b4, b5
         let index = Tile::A4;
-        let attacks = KING_MOVES[index];
+        let attacks = Board::KING_MOVES[index];
 
         let expected = Tile::A3 | Tile::A5 | Tile::B3 | Tile::B4 | Tile::B5;
         assert_eq!(attacks, expected);
@@ -116,7 +116,7 @@ mod generation_tests {
         let board = Board::empty();
         let king_tile = Tile::D4;
         let moves = board.king_moves(king_tile);
-        let expected = KING_MOVES[king_tile];
+        let expected = Board::KING_MOVES[king_tile];
         assert_eq!(moves, expected);
     }
 
@@ -129,7 +129,7 @@ mod generation_tests {
         board.try_move(Move::new(Tile::E7, Tile::E5)).unwrap();
 
         assert_eq!(
-            KING_MOVES[Tile::E1.as_index()],
+            Board::KING_MOVES[Tile::E1.as_index()],
             Tile::D1 | Tile::D2 | Tile::E2 | Tile::F2 | Tile::F1
         );
         assert_eq!(board.king_moves(Tile::E1), Tile::E2.as_bitset());

@@ -297,7 +297,11 @@ impl State {
                     .moves_from_tile(self.cursor_pos, piece.kind)
                     .tiles()
                     .map(|to| Move::new(self.cursor_pos, to))
-                    .filter(|mv| board.possible_moves().any(|legal_move| legal_move == *mv))
+                    .filter(|mv| {
+                        board
+                            .possible_moves(board.to_move())
+                            .any(|(_, legal_move)| legal_move == *mv)
+                    })
                     .collect();
                 SelectionResult::Selected(piece)
             } else {

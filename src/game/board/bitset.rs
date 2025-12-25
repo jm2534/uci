@@ -157,7 +157,7 @@ impl Bitset {
 
     /// Creates a bitset that is the set union of an iterable of
     /// existing bitsets.
-    pub fn union<'a, T>(bitsets: T) -> Bitset
+    pub fn union<T>(bitsets: T) -> Bitset
     where
         T: Iterator<Item = Bitset>,
     {
@@ -177,6 +177,15 @@ impl Bitset {
 impl From<Tile> for Bitset {
     fn from(tile: Tile) -> Self {
         tile.as_bitset()
+    }
+}
+
+impl FromIterator<Tile> for Bitset {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = Tile>,
+    {
+        iter.into_iter().fold(Bitset(0), BitOr::bitor)
     }
 }
 
