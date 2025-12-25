@@ -1,27 +1,10 @@
-use crate::game::moves::{Move, MoveParseError};
+use std::fmt::Display;
+
+use crate::game::{
+    board::Board,
+    moves::{Move, MoveParseError},
+};
 use thiserror::Error;
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum Command {
-    /// Initialize a new UCI-based connection
-    Uci,
-    UciNewGame,
-    Debug(bool),
-
-    Position(Vec<Move>),
-
-    IsReady,
-    // SetOption(Setting),
-    Register,
-
-    Go,
-
-    /// Stop calculating moves as soon as possible
-    Stop,
-
-    /// Quit the program as soon as possible
-    Quit,
-}
 
 #[derive(Debug)]
 pub enum Setting {}
@@ -33,6 +16,53 @@ pub enum CommandError {
 
     #[error("Unrecognized command argument `{0}`")]
     UnrecognizedArgument(String),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Command {
+    /// Initialize a new UCI-based connection
+    Uci,
+
+    UciNewGame,
+
+    Debug(bool),
+
+    /// Series of moves to apply to a board in a starting configuration
+    MovePosition(Vec<Move>),
+
+    /// Starting configuration without speficiation of moves taken
+    FenPosition(Board),
+
+    IsReady,
+
+    Register,
+
+    Go,
+
+    /// Stop calculating moves as soon as possible
+    Stop,
+
+    /// Quit the program as soon as possible
+    Quit,
+}
+
+impl Display for Command {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Command::Uci => "uci",
+            Command::UciNewGame => "ucinewgame",
+            Command::Debug(true) => "debug on",
+            Command::Debug(false) => "debug off",
+            Command::MovePosition(_) => "position startpos",
+            Command::FenPosition(_) => "position fen",
+            Command::IsReady => "isready",
+            Command::Register => "register",
+            Command::Go => "go",
+            Command::Stop => "stop",
+            Command::Quit => "quit",
+        };
+        write!(f, "{s}")
+    }
 }
 
 impl TryFrom<&str> for Command {
@@ -47,21 +77,47 @@ impl TryFrom<&str> for Command {
 
         while let Some(token) = tokens.next() {
             let result = match token {
+                "uci" => Ok(Command::Uci),
+                "ucinewgame" => Ok(Command::UciNewGame),
+                "quit" => Ok(Command::Quit),
+                "stop" => Ok(Command::Stop),
+                "go" => Ok(Command::Go),
                 "debug" => match tokens.next() {
                     Some("on") => Ok(Self::Debug(true)),
                     Some("off") => Ok(Self::Debug(false)),
                     Some(_) | None => unrecognized(value),
                 },
                 "isready" => Ok(Command::IsReady),
-                "position" => tokens
-                    .map(Move::try_from)
-                    .collect::<Result<Vec<Move>, MoveParseError>>()
-                    .map(Command::Position)
-                    .map_err(|_| CommandError::UnrecognizedArgument(value.to_owned())),
-                "go" => match tokens.next() {
-                    Some("ponder") => unimplemented!(),
-                    Some(_) | None => unrecognized(value),
-                },
+                "position" => {
+                    // get starting position that follow-up moves reference
+                    match tokens.next() {
+                        Some("fen") => {
+                            let fenstring = tokens
+                                .next()
+                                .ok_or(CommandError::UnrecognizedCommand(value.to_owned()))?;
+
+                            let board = Board::try_from(fenstring).map_err(|e| {
+                                CommandError::UnrecognizedArgument(fenstring.to_owned())
+                            })?;
+
+                            Ok(Command::FenPosition(board))
+                        }
+                        Some("startpos") => {
+                            if let Some("moves") = tokens.next() {
+                                tokens
+                                    .map(Move::try_from)
+                                    .collect::<Result<Vec<Move>, MoveParseError>>()
+                                    .map(Command::MovePosition)
+                                    .map_err(|_| {
+                                        CommandError::UnrecognizedArgument(value.to_owned())
+                                    })
+                            } else {
+                                unrecognized(value)
+                            }
+                        }
+                        Some(_) | None => return unrecognized(value),
+                    }
+                }
                 _ => continue,
             };
             return result;
@@ -74,7 +130,7 @@ impl TryFrom<&str> for Command {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::tile::Tile;
+    use crate::game::board::tile::Tile;
 
     #[test]
     fn test_debug_on() {
@@ -90,34 +146,21 @@ mod tests {
 
     #[test]
     fn test_single_position() {
-        let result = Command::try_from("abc position e2e4");
+        let result = Command::try_from("abc position startpos moves e2e4");
         assert_eq!(
             result.unwrap(),
-            Command::Position(vec![Move {
-                start: Tile { file: 4, rank: 1 },
-                stop: Tile { file: 4, rank: 3 }
-            }])
+            Command::MovePosition(vec![Move::new(Tile::new(1, 4), Tile::new(3, 4))])
         )
     }
 
     #[test]
     fn test_multi_position() {
-        let result = Command::try_from("abc position e2e4 b3b7 g1a4");
+        let result = Command::try_from("  abc  position startpos moves e2e4 e7e5");
         assert_eq!(
             result.unwrap(),
-            Command::Position(vec![
-                Move {
-                    start: Tile { file: 4, rank: 1 },
-                    stop: Tile { file: 4, rank: 3 }
-                },
-                Move {
-                    start: Tile { file: 1, rank: 2 },
-                    stop: Tile { file: 1, rank: 6 }
-                },
-                Move {
-                    start: Tile { file: 6, rank: 0 },
-                    stop: Tile { file: 0, rank: 3 }
-                }
+            Command::MovePosition(vec![
+                Move::new(Tile::new(1, 4), Tile::new(3, 4)),
+                Move::new(Tile::new(6, 4), Tile::new(4, 4)),
             ])
         )
     }

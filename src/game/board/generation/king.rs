@@ -1,0 +1,163 @@
+use super::super::{Bitset, Board};
+use crate::game::board::tile::Tile;
+
+/// Pre-computed king attack patterns indexed by square.
+/// Kings move the same regardless of color, so there is no need to distinguish between players.
+pub const KING_MOVES: [Bitset; 64] = generate_king_moves_table();
+
+impl Board {
+    /// Generate all pseudo-legal moves assuming a king at the given tile.
+    pub fn king_moves(&self, tile: Tile) -> Bitset {
+        // kings can move to any square in their attack pattern not occupied by own pieces
+        KING_MOVES[tile] & !self.occupancy[self.to_move]
+    }
+}
+
+/// Generate all king attack patterns at compile time.
+const fn generate_king_moves_table() -> [Bitset; 64] {
+    let mut table = [Bitset(0); 64];
+
+    let mut i = 0;
+    while i < 64 {
+        let tile = Tile::from_index(i);
+        table[i] = generate_king_moves(tile);
+        i += 1;
+    }
+
+    table
+}
+
+const fn generate_king_moves(tile: Tile) -> Bitset {
+    let square = tile.as_bitset().0;
+    let not_a_file = !Board::FILE_MASKS[0].0;
+    let not_h_file = !Board::FILE_MASKS[7].0;
+
+    let moves = ((square << 8)) // north
+                | ((square >> 8)) // south
+                | ((square << 1) & not_a_file) // east
+                | ((square >> 1) & not_h_file) // west
+                | ((square << 9) & not_a_file) // northeast
+                | ((square << 7) & not_h_file) // northwest
+                | ((square >> 7) & not_a_file) // southeast
+                | ((square >> 9) & not_h_file); // southwest
+
+    Bitset(moves)
+}
+
+#[cfg(test)]
+mod attack_tests {
+    use super::*;
+
+    #[test]
+    fn test_king_center_attacks() {
+        // King on d4 should attack 8 squares: c3, d3, e3, c4, e4, c5, d5, e5
+        let index = Tile::D4;
+        let attacks = KING_MOVES[index];
+
+        let expected =
+            Tile::C3 | Tile::D3 | Tile::E3 | Tile::C4 | Tile::E4 | Tile::C5 | Tile::D5 | Tile::E5;
+        assert_eq!(attacks, expected);
+    }
+
+    #[test]
+    fn test_king_corner_attacks() {
+        // King on a1 should attack only 3 squares: a2, b1, b2
+        let index = Tile::A1;
+        let attacks = KING_MOVES[index];
+
+        let expected = Tile::A2 | Tile::B1 | Tile::B2;
+        assert_eq!(attacks, expected);
+    }
+
+    #[test]
+    fn test_king_h8_corner_attacks() {
+        // King on h8 should attack only 3 squares: g8, g7, h7
+        let index = Tile::H8;
+        let attacks = KING_MOVES[index];
+
+        let expected = Tile::G8 | Tile::G7 | Tile::H7;
+        assert_eq!(attacks, expected);
+    }
+
+    #[test]
+    fn test_king_edge_attacks() {
+        // King on d1 (bottom edge) should attack 5 squares: c1, e1, c2, d2, e2
+        let index = Tile::D1;
+        let attacks = KING_MOVES[index];
+
+        let expected = Tile::C1 | Tile::E1 | Tile::C2 | Tile::D2 | Tile::E2;
+        assert_eq!(attacks, expected);
+    }
+
+    #[test]
+    fn test_king_side_edge_attacks() {
+        // King on a4 (left edge) should attack 5 squares: a3, a5, b3, b4, b5
+        let index = Tile::A4;
+        let attacks = KING_MOVES[index];
+
+        let expected = Tile::A3 | Tile::A5 | Tile::B3 | Tile::B4 | Tile::B5;
+        assert_eq!(attacks, expected);
+    }
+}
+
+#[cfg(test)]
+mod generation_tests {
+    use super::*;
+    use crate::game::{
+        Move,
+        board::Board,
+        color::Color,
+        piece::{Piece, PieceKind},
+    };
+
+    #[test]
+    fn test_king_moves_empty_board() {
+        // king moves on an empty board should return all attack squares
+        let board = Board::empty();
+        let king_tile = Tile::D4;
+        let moves = board.king_moves(king_tile);
+        let expected = KING_MOVES[king_tile];
+        assert_eq!(moves, expected);
+    }
+
+    #[test]
+    fn test_king_moves_blocked_by_own_pieces() {
+        let mut board = Board::new();
+
+        // kings pawn for white then black
+        board.try_move(Move::new(Tile::E2, Tile::E4)).unwrap();
+        board.try_move(Move::new(Tile::E7, Tile::E5)).unwrap();
+
+        assert_eq!(
+            KING_MOVES[Tile::E1.as_index()],
+            Tile::D1 | Tile::D2 | Tile::E2 | Tile::F2 | Tile::F1
+        );
+        assert_eq!(board.king_moves(Tile::E1), Tile::E2.as_bitset());
+    }
+
+    #[test]
+    fn test_king_captures_enemy_pieces() {
+        let mut board = Board::empty();
+        board.place_unchecked(
+            Piece {
+                kind: PieceKind::Pawn,
+                color: Color::Black,
+            },
+            Tile::C4,
+        );
+        board.place_unchecked(
+            Piece {
+                kind: PieceKind::Pawn,
+                color: Color::Black,
+            },
+            Tile::E5,
+        );
+
+        let king_tile = Tile::D4;
+        let moves = board.king_moves(king_tile);
+
+        // king should be able to capture enemy pieces
+        let enemy_squares = board.occupancy[Color::Black];
+        assert!((moves & enemy_squares) == enemy_squares);
+    }
+}
