@@ -140,6 +140,14 @@ impl Display for Tile {
     }
 }
 
+impl<T> Index<Tile> for Vec<T> {
+    type Output = T;
+
+    fn index(&self, index: Tile) -> &Self::Output {
+        &self[index.as_index()]
+    }
+}
+
 impl<T> Index<Tile> for [T] {
     type Output = T;
 

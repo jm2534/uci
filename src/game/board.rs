@@ -1,4 +1,4 @@
-mod bitset;
+pub mod bitset;
 mod fen;
 mod generation;
 mod occupants;
@@ -190,6 +190,13 @@ impl Board {
         Bitset(0x8080808080808080),
     ];
 
+    /// Initializes magic bitboard lookup tables for sliding piece move generation.
+    /// This must be called before using the board for move generation.
+    /// Subsequent calls are no-ops (initialization happens only once).
+    pub fn initialize() {
+        generation::rook::magic::initialize();
+    }
+
     /// Creates a board in the default starting position.
     pub fn new() -> Self {
         // core bitboards
@@ -328,7 +335,7 @@ impl Board {
                     PieceKind::Pawn => self.pawn_moves(start),
                     PieceKind::Knight => self.knight_moves(start),
                     PieceKind::Bishop => Bitset(0),
-                    PieceKind::Rook => Bitset(0),
+                    PieceKind::Rook => self.rook_moves(start),
                     PieceKind::Queen => Bitset(0),
                     PieceKind::King => self.king_moves(start),
                 };

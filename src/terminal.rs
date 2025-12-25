@@ -9,7 +9,7 @@ use crossterm::{
 use inquire::{InquireError, Select};
 use std::io::{self, stdout};
 use thiserror::Error;
-use tracing::{Level, debug, event, instrument, span};
+use tracing::{Level, debug, instrument};
 use uci::command::Command;
 use uci::{
     engine::{Engine, strategy::minimax::Minimax},
@@ -112,7 +112,7 @@ impl TryFrom<Event> for Action {
 
 pub struct Game {
     state: State,
-    engine: Engine<Minimax>,
+    pub engine: Engine<Minimax>,
 }
 
 impl Game {

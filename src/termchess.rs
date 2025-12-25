@@ -6,6 +6,7 @@ use tracing_subscriber::{self, EnvFilter};
 
 #[cfg(feature = "logging")]
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
+use uci::game::board::Board;
 
 #[cfg(feature = "logging")]
 fn configure_logging() -> (NonBlocking, WorkerGuard) {
@@ -30,6 +31,7 @@ fn main() -> io::Result<()> {
     let color = terminal::prompt_color();
     terminal::init_terminal()?;
     let mut game = terminal::Game::new(color);
+    Board::initialize();
 
     // main thread handles user input and renders, spawned threads run engine
     // TODO: CPU moves via engine.step()

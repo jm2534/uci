@@ -8,7 +8,7 @@ mod king;
 mod knight;
 mod pawn;
 mod queen;
-mod rook;
+pub(crate) mod rook;
 
 use super::{Bitset, Board};
 use crate::game::{board::tile::Tile, piece::PieceKind};
@@ -36,6 +36,7 @@ mod tests {
 
     #[test]
     fn test_initial_board_generation() {
+        Board::initialize();
         let board = Board::new();
         let moves: HashSet<Move> = board.possible_moves().collect();
 
