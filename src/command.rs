@@ -1,6 +1,9 @@
 use std::fmt::Display;
 
-use crate::game::moves::{Move, MoveParseError};
+use crate::game::{
+    board::Board,
+    moves::{Move, MoveParseError},
+};
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -25,7 +28,10 @@ pub enum Command {
     Debug(bool),
 
     /// Series of moves to apply to a board in a starting configuration
-    Position(Vec<Move>),
+    MovePosition(Vec<Move>),
+
+    /// Starting configuration without speficiation of moves taken
+    FenPosition(Board),
 
     IsReady,
 
@@ -47,7 +53,8 @@ impl Display for Command {
             Command::UciNewGame => "ucinewgame",
             Command::Debug(true) => "debug on",
             Command::Debug(false) => "debug off",
-            Command::Position(_) => "position",
+            Command::MovePosition(_) => "position startpos",
+            Command::FenPosition(_) => "position fen",
             Command::IsReady => "isready",
             Command::Register => "register",
             Command::Go => "go",
@@ -83,20 +90,32 @@ impl TryFrom<&str> for Command {
                 "isready" => Ok(Command::IsReady),
                 "position" => {
                     // get starting position that follow-up moves reference
-                    let _fenstring: Option<&str> = match tokens.next() {
-                        Some("startpos") => None,
-                        _fenstring @ Some("fenstring") => unimplemented!(),
-                        Some(_) | None => return unrecognized(value),
-                    };
+                    match tokens.next() {
+                        Some("fen") => {
+                            let fenstring = tokens
+                                .next()
+                                .ok_or(CommandError::UnrecognizedCommand(value.to_owned()))?;
 
-                    if let Some("moves") = tokens.next() {
-                        tokens
-                            .map(Move::try_from)
-                            .collect::<Result<Vec<Move>, MoveParseError>>()
-                            .map(Command::Position)
-                            .map_err(|_| CommandError::UnrecognizedArgument(value.to_owned()))
-                    } else {
-                        unrecognized(value)
+                            let board = Board::try_from(fenstring).map_err(|e| {
+                                CommandError::UnrecognizedArgument(fenstring.to_owned())
+                            })?;
+
+                            Ok(Command::FenPosition(board))
+                        }
+                        Some("startpos") => {
+                            if let Some("moves") = tokens.next() {
+                                tokens
+                                    .map(Move::try_from)
+                                    .collect::<Result<Vec<Move>, MoveParseError>>()
+                                    .map(Command::MovePosition)
+                                    .map_err(|_| {
+                                        CommandError::UnrecognizedArgument(value.to_owned())
+                                    })
+                            } else {
+                                unrecognized(value)
+                            }
+                        }
+                        Some(_) | None => return unrecognized(value),
                     }
                 }
                 _ => continue,
@@ -130,7 +149,7 @@ mod tests {
         let result = Command::try_from("abc position startpos moves e2e4");
         assert_eq!(
             result.unwrap(),
-            Command::Position(vec![Move::new(Tile::new(1, 4), Tile::new(3, 4))])
+            Command::MovePosition(vec![Move::new(Tile::new(1, 4), Tile::new(3, 4))])
         )
     }
 
@@ -139,7 +158,7 @@ mod tests {
         let result = Command::try_from("  abc  position startpos moves e2e4 e7e5");
         assert_eq!(
             result.unwrap(),
-            Command::Position(vec![
+            Command::MovePosition(vec![
                 Move::new(Tile::new(1, 4), Tile::new(3, 4)),
                 Move::new(Tile::new(6, 4), Tile::new(4, 4)),
             ])

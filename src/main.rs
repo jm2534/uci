@@ -13,16 +13,18 @@ fn main() -> Result<()> {
     let mut engine = Engine::default();
     loop {
         handle.read_line(&mut command_buffer)?;
-        match Command::try_from(&command_buffer[..]) {
-            Ok(Command::Quit) => break,
-            Ok(cmd) => match engine.handle(cmd) {
-                Ok(None) => (),
-                Ok(Some(response)) => println!("{response}"),
-                Err(e) => panic!("Illegal move: {e}"),
-            },
-            Err(CommandError::UnrecognizedCommand(c))
-            | Err(CommandError::UnrecognizedArgument(c)) => println!("Unknown command: {c}"),
-        };
+        if !command_buffer.trim().is_empty() {
+            match Command::try_from(&command_buffer[..]) {
+                Ok(Command::Quit) => break,
+                Ok(cmd) => match engine.handle(cmd) {
+                    Ok(None) => (),
+                    Ok(Some(response)) => println!("{response}"),
+                    Err(e) => eprintln!("Illegal move: {e}"),
+                },
+                Err(CommandError::UnrecognizedCommand(c))
+                | Err(CommandError::UnrecognizedArgument(c)) => eprintln!("Unknown command: {c}"),
+            };
+        }
         command_buffer.clear();
     }
     Ok(())

@@ -37,6 +37,37 @@ pub struct Piece {
     pub color: Color,
 }
 
+impl Piece {
+    pub fn fen_char(&self) -> char {
+        match self.kind {
+            PieceKind::Pawn => match self.color {
+                Color::White => 'P',
+                Color::Black => 'p',
+            },
+            PieceKind::Knight => match self.color {
+                Color::White => 'N',
+                Color::Black => 'n',
+            },
+            PieceKind::Bishop => match self.color {
+                Color::White => 'B',
+                Color::Black => 'b',
+            },
+            PieceKind::Rook => match self.color {
+                Color::White => 'R',
+                Color::Black => 'r',
+            },
+            PieceKind::Queen => match self.color {
+                Color::White => 'Q',
+                Color::Black => 'q',
+            },
+            PieceKind::King => match self.color {
+                Color::White => 'K',
+                Color::Black => 'k',
+            },
+        }
+    }
+}
+
 impl TryFrom<char> for Piece {
     type Error = ParsePieceError;
 

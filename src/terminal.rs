@@ -141,7 +141,7 @@ impl Game {
                     }
                     SelectionResult::MoveMade(chess_move) => {
                         // Attempt to make the move through the engine
-                        match self.engine.handle(Command::Position(vec![chess_move])) {
+                        match self.engine.handle(Command::MovePosition(vec![chess_move])) {
                             Ok(_) => {
                                 self.state.clear_selection();
                                 if self.engine.finished() {
@@ -378,8 +378,11 @@ pub(super) mod render {
         stdout.queue(MoveTo(0, 2))?;
         stdout.queue(Print(format!("Turn: {:?}", board.to_move())))?;
 
+        stdout.queue(MoveTo(0, 3))?;
+        stdout.queue(Print(format!("Board: {}", board.fen())))?;
+
         // top-left corner of board display (note: not board itself)
-        let start_row = 4;
+        let start_row = 5;
         let start_col = 4;
 
         // column labels, shifted to accomodate row labels and board edge
@@ -462,7 +465,7 @@ pub(super) mod render {
         stdout.queue(Print("  └─────────────────┘"))?;
 
         // status information
-        current_row += 1;
+        current_row += 2;
         stdout.queue(MoveTo(0, current_row))?;
         if let Some(selected) = state.selected_pos {
             stdout.queue(Print(format!(

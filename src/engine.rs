@@ -51,7 +51,11 @@ impl<S: Strategy> Engine<S> {
                 self.debug = debug;
                 Ok(None)
             }
-            Command::Position(ref moves) => {
+            Command::FenPosition(ref board) => {
+                self.board = board.to_owned();
+                Ok(None)
+            }
+            Command::MovePosition(ref moves) => {
                 for attempt in moves {
                     if let Err(e) = self.board.try_move(*attempt) {
                         return Err(e);
@@ -59,7 +63,10 @@ impl<S: Strategy> Engine<S> {
                 }
                 Ok(None)
             }
-            Command::IsReady => Ok(Some("readyok".to_string())),
+            Command::IsReady => {
+                Board::initialize();
+                Ok(Some("readyok".to_string()))
+            }
             Command::Register => todo!(),
             Command::Go => {
                 let best_move = self.strategy.step(&mut self.board);
