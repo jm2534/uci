@@ -195,6 +195,7 @@ impl Board {
     /// Subsequent calls are no-ops (initialization happens only once).
     pub fn initialize() {
         generation::rook::magic::initialize();
+        generation::bishop::magic::initialize();
     }
 
     /// Creates a board in the default starting position.
@@ -334,23 +335,31 @@ impl Board {
                 let moveset = match piece.kind {
                     PieceKind::Pawn => self.pawn_moves(start),
                     PieceKind::Knight => self.knight_moves(start),
-                    PieceKind::Bishop => Bitset(0),
+                    PieceKind::Bishop => self.bishop_moves(start),
                     PieceKind::Rook => self.rook_moves(start),
-                    PieceKind::Queen => Bitset(0),
+                    PieceKind::Queen => self.rook_moves(start) | self.bishop_moves(start),
                     PieceKind::King => self.king_moves(start),
                 };
 
                 if moveset.contains(stop) {
-                    self.positions[piece.kind] ^= stop;
-                    self.positions[piece.kind] |= start;
+                    // pick up piece
+                    self.positions[piece.kind] ^= start;
                     self.occupancy[piece.color] ^= start;
-                    self.occupancy[piece.color] |= stop;
-
-                    let captured = self.occupants[stop.as_index()];
-                    self.occupants[stop.as_index()] = Some(piece);
                     self.occupants[start.as_index()] = None;
-                    self.to_move = !self.to_move;
 
+                    // capture other
+                    let captured = self.occupants[stop].and_then(|c| {
+                        self.positions[c.kind] ^= stop;
+                        self.occupancy[c.color] ^= stop;
+                        Some(c)
+                    });
+
+                    // drop piece
+                    self.positions[piece.kind] |= stop;
+                    self.occupancy[piece.color] |= stop;
+                    self.occupants[stop.as_index()] = Some(piece);
+
+                    self.to_move = !self.to_move;
                     Ok(captured.map(MoveKind::Capture).unwrap_or(MoveKind::Quiet))
                 } else {
                     Err(IllegalMove::NotPossible(attempt))
@@ -366,6 +375,49 @@ impl Board {
     pub fn winner(&self) -> Option<Color> {
         // TODO: overlap movement sets to determine who is in checkmate
         None
+    }
+
+    pub fn fen(&self) -> String {
+        let mut fen = String::new();
+
+        // Piece placement
+        for rank in (0..8).rev() {
+            let mut empty_count = 0;
+            for file in 0..8 {
+                let square = Tile::new(rank, file);
+                match self.occupants[square] {
+                    Some(piece) => {
+                        if empty_count > 0 {
+                            fen.push_str(&empty_count.to_string());
+                            empty_count = 0;
+                        }
+                        fen.push(piece.fen_char());
+                    }
+                    None => empty_count += 1,
+                }
+            }
+            if empty_count > 0 {
+                fen.push_str(&empty_count.to_string());
+            }
+            if rank > 0 {
+                fen.push('/');
+            }
+        }
+
+        fen.push(' ');
+        fen.push(
+            self.to_move
+                .to_string()
+                .to_lowercase()
+                .chars()
+                .next()
+                .unwrap(),
+        );
+
+        // TODO: placeholder at end
+        fen.push_str(" e3 0 1");
+
+        fen
     }
 }
 
