@@ -487,6 +487,15 @@ pub(super) mod render {
         stdout.queue(MoveTo(0, current_row))?;
         stdout.queue(Print(format!("Cursor: {}", state.cursor_pos)))?;
 
+        // win conditions
+        if let Some(winner) = board.winner() {
+            stdout.queue(MoveTo(start_col + 25, start_row + 5))?;
+            stdout.queue(Print(format!("{} wins!", winner)))?;
+        } else if let Some(_) = board.in_check() {
+            stdout.queue(MoveTo(start_col + 25, start_row + 5))?;
+            stdout.queue(Print("Check!"))?;
+        }
+
         stdout.flush()?;
         Ok(())
     }

@@ -38,7 +38,8 @@ impl Default for Engine<Minimax> {
 
 impl<S: Strategy> Engine<S> {
     pub fn finished(&self) -> bool {
-        self.board.winner().is_some()
+        // self.board.winner().is_some()
+        false
     }
 
     pub fn handle(&mut self, command: Command) -> Result<Option<String>, IllegalMove> {

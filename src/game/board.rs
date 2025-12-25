@@ -369,19 +369,20 @@ impl Board {
 
     /// Yields all legal moves for the indicated player `by`. Note that it may not be `by`'s turn.
     pub fn possible_moves<'a>(&'a self, by: Color) -> impl Iterator<Item = (PieceKind, Move)> + 'a {
-        self.psuedo_legal_moves(by).filter(move |&(kind, attempt)| {
-            if self.pinned.contains(attempt.start()) {
-                // TODO: check move is not along pin ray
-                true
-            } else if kind == PieceKind::King {
-                // king can never move into check
-                // !self.is_attacked(attempt.stop(), by)
-                let mut temp = self.clone();
-                temp.try_move(attempt).is_ok() && !temp.is_attacked(attempt.stop(), !by)
-            } else {
-                // TODO: non-pinned, non-king psuedo-legal moves are legal if king is not in check at end of turn
-                true
+        self.psuedo_legal_moves(by).filter(move |&(_, attempt)| {
+            // make move
+            let mut temp = self.clone();
+            if temp.try_move(attempt).is_err() {
+                return false;
             }
+
+            // after move, is king in check?
+            let king = (temp.positions[PieceKind::King] & temp.occupancy[by])
+                .tiles()
+                .next()
+                .unwrap();
+
+            !temp.is_attacked(king, !by)
         })
     }
 
@@ -451,13 +452,38 @@ impl Board {
         // TODO: implement unmake_move
     }
 
-    /// Returns the winner of the current board, if any. Useful for checking
-    /// if a game has ended.
-    pub fn winner(&self) -> Option<Color> {
-        // TODO: overlap movement sets to determine who is in checkmate
+    fn king_of(&self, color: Color) -> Tile {
+        (self.positions[PieceKind::King] & self.occupancy[color])
+            .tiles()
+            .next()
+            .unwrap()
+    }
+
+    /// Returns the player in check, if any.
+    pub fn in_check(&self) -> Option<Color> {
+        for color in enum_iterator::all::<Color>() {
+            let king = self.king_of(color);
+            if self.is_attacked(king, !color) {
+                return Some(color);
+            }
+        }
         None
     }
 
+    /// Returns the winner of the current board, if any. Useful for checking
+    /// if a game has ended.
+    pub fn winner(&self) -> Option<Color> {
+        let king = self.king_of(self.to_move);
+        if self.is_attacked(king, !self.to_move)
+            && self.possible_moves(self.to_move).next().is_none()
+        {
+            Some(!self.to_move)
+        } else {
+            None
+        }
+    }
+
+    /// The FEN-string representation of the current board.
     pub fn fen(&self) -> String {
         let mut fen = String::new();
 
