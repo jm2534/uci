@@ -3,7 +3,7 @@
 //! This module implements efficient move generation for all piece types,
 //! following established bitboard patterns from chess programming literature.
 
-mod bishop;
+pub(crate) mod bishop;
 mod king;
 mod knight;
 mod pawn;

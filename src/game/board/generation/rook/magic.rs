@@ -256,11 +256,16 @@ mod tests {
     #[test]
     fn test_occupancy_mask_center() {
         let mask = MOVEMENT_MASKS[Tile::D4];
-
-        // Center square should have 10 relevant bits (excluding edges)
-        // Files: b, c, e, f, g (5 squares on rank 4, excluding a and h)
-        // Ranks: 2, 3, 5, 6, 7 (5 squares on file d, excluding 1 and 8)
         assert_eq!(mask.len(), 10);
+
+        assert_eq!(
+            mask & Board::FILE_MASKS[3],
+            Board::FILE_MASKS[3] ^ Tile::D4 ^ Tile::D1 ^ Tile::D8
+        );
+        assert_eq!(
+            mask & Board::RANK_MASKS[3],
+            Board::RANK_MASKS[3] ^ Tile::D4 ^ Tile::A4 ^ Tile::H4
+        );
     }
 
     #[test]
