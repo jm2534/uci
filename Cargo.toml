@@ -1,5 +1,6 @@
 [package]
 name = "termchess"
+authors = ["jm2534"]
 version = "0.1.0"
 edition = "2024"
 
@@ -32,4 +33,11 @@ tracing-appender = { version = "0.2.4", optional = true }
 
 [features]
 terminal = ["dep:inquire", "dep:crossterm"]
-logging = ["dep:tracing-subscriber"]
+logging = ["dep:tracing-subscriber", "dep:tracing-appender"]
+
+[profile.release]
+opt-level = 3        # Maximum optimization level
+lto = "fat"          # Enable full Link Time Optimization
+codegen-units = 1    # Reduce parallel code generation for better optimization
+# panic = "abort"      # Reduce binary size and potential overhead
+strip = true         # Strip symbols from binary to reduce size

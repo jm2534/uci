@@ -1,6 +1,6 @@
 /// Fun typestate implementation for parsing a FEN string into a board state.
 use crate::game::{
-    board::{self, Board, tile::Tile},
+    board::{self, Board, Right, tile::Tile},
     piece::{ParsePieceError, Piece},
 };
 use std::{
@@ -122,7 +122,7 @@ struct FenParser<'a, S: FenParseState> {
 impl<'a> FenParser<'a, PiecePlacement> {
     fn new(source: &'a str) -> Self {
         let mut board = Board::empty();
-        let castling_rights = board::CastlingRights::with_none();
+        let castling_rights = board::CastlingRights::NONE;
         board.castling_rights = castling_rights;
 
         Self {
@@ -186,16 +186,16 @@ impl<'a> FenParser<'a, ToMove> {
 impl<'a> FenParser<'a, CastlingRights> {
     fn check_castling_rights(mut self) -> Result<Board, ParseBoardError> {
         let mut source = self.source.trim();
-        let mut castling_rights = board::CastlingRights::with_none();
+        let mut castling_rights = board::CastlingRights::NONE;
         while let Some(ch) = source.next()
             && !ch.is_whitespace()
         {
             match ch {
                 '-' if castling_rights.none() => break,
-                'K' => castling_rights.white_king_side = true,
-                'Q' => castling_rights.white_queen_side = true,
-                'k' => castling_rights.black_king_side = true,
-                'q' => castling_rights.black_queen_side = true,
+                'K' => castling_rights.set(Right::WhiteKingSide),
+                'Q' => castling_rights.set(Right::WhiteQueenSide),
+                'k' => castling_rights.set(Right::BlackKingSide),
+                'q' => castling_rights.set(Right::BlackQueenSide),
                 ch => return Err(ParseBoardError::Unrecognized(ch, source.depth())),
             }
         }
@@ -289,15 +289,7 @@ mod tests {
     fn test_all_castle() -> Result<()> {
         let fenstring = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let board = Board::try_from(fenstring)?;
-        assert!(
-            board.castling_rights()
-                == board::CastlingRights {
-                    white_king_side: true,
-                    white_queen_side: true,
-                    black_king_side: true,
-                    black_queen_side: true,
-                }
-        );
+        assert_eq!(board.castling_rights(), board::CastlingRights::ALL);
         Ok(())
     }
 
@@ -305,15 +297,7 @@ mod tests {
     fn test_no_castle() -> Result<()> {
         let fenstring = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1";
         let board = Board::try_from(fenstring)?;
-        assert!(
-            board.castling_rights()
-                == board::CastlingRights {
-                    white_king_side: false,
-                    white_queen_side: false,
-                    black_king_side: false,
-                    black_queen_side: false,
-                }
-        );
+        assert_eq!(board.castling_rights(), board::CastlingRights::NONE);
         Ok(())
     }
 
@@ -321,15 +305,7 @@ mod tests {
     fn test_white_castle() -> Result<()> {
         let fenstring = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQ - 0 1";
         let board = Board::try_from(fenstring)?;
-        assert!(
-            board.castling_rights()
-                == board::CastlingRights {
-                    white_king_side: true,
-                    white_queen_side: true,
-                    black_king_side: false,
-                    black_queen_side: false,
-                }
-        );
+        assert_eq!(board.castling_rights(), board::CastlingRights::WHITE);
         Ok(())
     }
 
@@ -337,15 +313,7 @@ mod tests {
     fn test_black_castle() -> Result<()> {
         let fenstring = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b kq - 0 1";
         let board = Board::try_from(fenstring)?;
-        assert!(
-            board.castling_rights()
-                == board::CastlingRights {
-                    white_king_side: false,
-                    white_queen_side: false,
-                    black_king_side: true,
-                    black_queen_side: true,
-                }
-        );
+        assert_eq!(board.castling_rights(), board::CastlingRights::BLACK);
         Ok(())
     }
 
@@ -353,15 +321,7 @@ mod tests {
     fn test_white_castle_queen_side() -> Result<()> {
         let fenstring = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w K - 0 1";
         let board = Board::try_from(fenstring)?;
-        assert!(
-            board.castling_rights()
-                == board::CastlingRights {
-                    white_king_side: true,
-                    white_queen_side: false,
-                    black_king_side: false,
-                    black_queen_side: false,
-                }
-        );
+        assert_eq!(board.castling_rights(), board::Right::WhiteKingSide.into());
         Ok(())
     }
 
@@ -369,15 +329,7 @@ mod tests {
     fn test_black_castle_queen_side() -> Result<()> {
         let fenstring = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b k - 0 1";
         let board = Board::try_from(fenstring)?;
-        assert!(
-            board.castling_rights()
-                == board::CastlingRights {
-                    white_king_side: false,
-                    white_queen_side: false,
-                    black_king_side: true,
-                    black_queen_side: false,
-                }
-        );
+        assert_eq!(board.castling_rights(), board::Right::BlackKingSide.into());
         Ok(())
     }
 }

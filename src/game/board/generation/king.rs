@@ -1,15 +1,79 @@
 use super::super::{Bitset, Board};
-use crate::game::board::tile::Tile;
+use crate::game::{
+    Color,
+    board::{Right, tile::Tile},
+};
 
 impl Board {
     /// Pre-computed king attack patterns indexed by square.
     /// Kings move the same regardless of color, so there is no need to distinguish between players.
     pub(in crate::game::board) const KING_MOVES: [Bitset; 64] = generate_king_moves_table();
 
+    const KING_STARTING_POSITIONS: [Tile; 2] = [Tile::E8, Tile::E1];
+    const WHITE_KINGSIDE_PATH: Bitset = Bitset(0x60); // f1, g1
+    const WHITE_QUEENSIDE_PATH: Bitset = Bitset(0x0E); // b1, c1, d1
+    const BLACK_KINGSIDE_PATH: Bitset = Bitset(0xC0); // f8, g8
+    const BLACK_QUEENSIDE_PATH: Bitset = Bitset(0x38); // b8, c8, d8
+
     /// Generate all pseudo-legal moves assuming a king at the given tile.
     pub fn king_moves(&self, tile: Tile) -> Bitset {
         // kings can move to any square in their attack pattern not occupied by own pieces
-        Self::KING_MOVES[tile] & !self.occupancy[self.to_move]
+        (Self::KING_MOVES[tile] & !self.occupancy[self.to_move]) // primary movement pattern
+            | self.castling_moves(tile) // castling
+    }
+
+    /// Generate all castling moves assuming a king at the given tile.
+    /// Castling conditions are as follows:
+    ///
+    /// 1. The king and the relevant rook must not have moved previously (encoded in board's castling rights)
+    /// 2. the king must not currently be in check
+    /// 3. The king must not pass through a square targetable by the other player
+    fn castling_moves(&self, tile: Tile) -> Bitset {
+        let color = self.to_move;
+        let mut moves = Bitset(0);
+        if tile != Board::KING_STARTING_POSITIONS[color] {
+            return Bitset(0);
+        }
+
+        let rights = self.castling_rights;
+        let all_occupancy = self.occupancy[0] | self.occupancy[1];
+        if color == Color::Black && !self.is_attacked(tile, Color::White) {
+            if rights.has(Right::BlackQueenSide) {
+                if (Board::BLACK_QUEENSIDE_PATH & all_occupancy).is_empty()
+                    && !self.is_attacked(Tile::D8, Color::White)
+                    && !self.is_attacked(Tile::E8, Color::White)
+                {
+                    moves |= Tile::C8;
+                }
+            }
+            if rights.has(Right::BlackKingSide) {
+                if (Board::BLACK_KINGSIDE_PATH & all_occupancy).is_empty()
+                    && !self.is_attacked(Tile::F8, Color::White)
+                    && !self.is_attacked(Tile::G8, Color::White)
+                {
+                    moves |= Tile::G8;
+                }
+            }
+        } else if !self.is_attacked(tile, Color::Black) {
+            if rights.has(Right::WhiteQueenSide) {
+                if (Board::WHITE_QUEENSIDE_PATH & all_occupancy).is_empty()
+                    && !self.is_attacked(Tile::C1, Color::Black)
+                    && !self.is_attacked(Tile::D1, Color::Black)
+                {
+                    moves |= Tile::C1;
+                }
+            }
+            if rights.has(Right::WhiteKingSide) {
+                if (Board::WHITE_KINGSIDE_PATH & all_occupancy).is_empty()
+                    && !self.is_attacked(Tile::F1, Color::Black)
+                    && !self.is_attacked(Tile::G1, Color::Black)
+                {
+                    moves |= Tile::G1;
+                }
+            }
+        }
+
+        moves
     }
 }
 
@@ -159,5 +223,50 @@ mod generation_tests {
         // king should be able to capture enemy pieces
         let enemy_squares = board.occupancy[Color::Black];
         assert!((moves & enemy_squares) == enemy_squares);
+    }
+}
+
+#[cfg(test)]
+mod castling_tests {
+    use super::*;
+
+    #[test]
+    fn test_white_king_side_simple() {
+        let fen = "8/8/8/8/8/8/PPPPPPP/RNBQK2R w KQkq - 0 1";
+        let board = Board::try_from(fen).unwrap();
+        Board::initialize();
+
+        let king_pos = board.king_of(Color::White);
+        assert_eq!(board.king_moves(king_pos), Tile::G1 | Tile::F1);
+    }
+
+    #[test]
+    fn test_white_queen_side_simple() {
+        let fen = "8/8/8/8/8/8/PPPPPPP/R3KBNR w KQkq - 0 1";
+        let board = Board::try_from(fen).unwrap();
+        Board::initialize();
+
+        let king_pos = board.king_of(Color::White);
+        assert_eq!(board.king_moves(king_pos), Tile::C1 | Tile::D1);
+    }
+
+    #[test]
+    fn test_white_king_side_blocked() {
+        let fen = "8/8/8/8/8/8/PPPPPPP/RNBQKQ1R w KQkq - 0 1";
+        let board = Board::try_from(fen).unwrap();
+        Board::initialize();
+
+        let king_pos = board.king_of(Color::White);
+        assert_eq!(board.king_moves(king_pos), Bitset::empty());
+    }
+
+    #[test]
+    fn test_white_queen_side_blocked() {
+        let fen = "8/8/8/8/8/8/PPPPPPP/R2QKBNR w KQkq - 0 1";
+        let board = Board::try_from(fen).unwrap();
+        Board::initialize();
+
+        let king_pos = board.king_of(Color::White);
+        assert_eq!(board.king_moves(king_pos), Bitset::empty());
     }
 }

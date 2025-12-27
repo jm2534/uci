@@ -1,6 +1,6 @@
-use std::io;
+use std::{env, io};
 mod terminal;
-use uci::game::board::Board;
+use uci::{engine::Engine, game::board::Board};
 
 fn main() -> io::Result<()> {
     #[cfg(feature = "logging")]
@@ -16,10 +16,28 @@ fn main() -> io::Result<()> {
             .init();
     }
 
+    // assume arguments if present are fen string
+    let args = env::args()
+        .skip(1)
+        .take(5)
+        .collect::<Vec<String>>()
+        .join(" ");
+
+    let board = if !args.is_empty() {
+        Board::try_from(args.as_str()).expect("FEN string not properly formatted")
+    } else {
+        Board::new()
+    };
+
     terminal::render::clear()?;
     let color = terminal::prompt_color();
     terminal::init_terminal()?;
+
     let mut game = terminal::Game::new(color);
+    let mut engine = Engine::default();
+    engine.board = board;
+    game.engine = engine;
+
     Board::initialize();
 
     // main thread handles user input and renders, spawned threads run engine
@@ -35,7 +53,7 @@ fn main() -> io::Result<()> {
         }
         game.handle(action);
     }
-
+    game.draw()?;
     terminal::cleanup_terminal()?;
     println!("\nGame finished!");
     Ok(())

@@ -125,7 +125,7 @@ const fn generate_movement_masks() -> [Bitset; 64] {
 }
 
 /// Initializes the magic bitboard lookup tables.
-/// This must be called before using `magic_rook_attacks()`.
+/// This must be called before using `magic_moves()`.
 /// Subsequent calls are no-ops (initialization happens only once).
 pub fn initialize() {
     ROOK_ATTACKS.get_or_init(|| {

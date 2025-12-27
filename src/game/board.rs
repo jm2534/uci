@@ -1,8 +1,11 @@
 pub mod bitset;
+pub mod castling;
 mod fen;
 mod generation;
 mod occupants;
 pub mod tile;
+
+pub use castling::{CastlingRights, Right};
 pub use fen::ParseBoardError;
 
 use crate::game::{
@@ -89,61 +92,6 @@ impl IntoIterator for Position {
             (PieceKind::King, self[PieceKind::King]),
         ];
         values.into_iter()
-    }
-}
-
-#[derive(Debug, Clone, Hash, Copy, PartialEq, Eq)]
-pub struct CastlingRights {
-    white_king_side: bool,
-    white_queen_side: bool,
-    black_king_side: bool,
-    black_queen_side: bool,
-}
-
-impl CastlingRights {
-    pub fn with_all() -> Self {
-        Self {
-            white_king_side: true,
-            white_queen_side: true,
-            black_king_side: true,
-            black_queen_side: true,
-        }
-    }
-
-    pub fn with_none() -> Self {
-        Self {
-            white_king_side: false,
-            white_queen_side: false,
-            black_king_side: false,
-            black_queen_side: false,
-        }
-    }
-
-    /// Whether no castling rights are present.
-    pub fn none(&self) -> bool {
-        !self.any()
-    }
-
-    /// Whether any castling rights are present.
-    pub fn any(&self) -> bool {
-        self.white_king_side
-            || self.white_queen_side
-            || self.black_king_side
-            || self.black_queen_side
-    }
-
-    /// Whether all castling rights are present.
-    pub fn all(&self) -> bool {
-        self.white_king_side
-            && self.white_queen_side
-            && self.black_king_side
-            && self.black_queen_side
-    }
-}
-
-impl Default for CastlingRights {
-    fn default() -> Self {
-        Self::with_all()
     }
 }
 
@@ -274,6 +222,7 @@ impl Board {
         }
     }
 
+    /// "Mailbox"-style occupancy representation of the board.
     pub fn occupants(&self) -> &[Option<Piece>; 64] {
         &self.occupants
     }
@@ -372,9 +321,8 @@ impl Board {
         self.psuedo_legal_moves(by).filter(move |&(_, attempt)| {
             // make move
             let mut temp = self.clone();
-            if temp.try_move(attempt).is_err() {
-                return false;
-            }
+            temp.try_move(attempt)
+                .expect("Attempted an invalid pseudo-legal move!");
 
             // after move, is king in check?
             let king = (temp.positions[PieceKind::King] & temp.occupancy[by])
@@ -438,6 +386,13 @@ impl Board {
                     self.occupants[stop.as_index()] = Some(piece);
 
                     self.to_move = !self.to_move;
+
+                    if piece.kind == PieceKind::King {
+                        self.castling_rights.unset_color(piece.color);
+                    } else if piece.kind == PieceKind::Rook {
+                        // TODO: handle side-based check constraints
+                    }
+
                     Ok(captured.map(MoveKind::Capture).unwrap_or(MoveKind::Quiet))
                 } else {
                     Err(IllegalMove::NotPossible(attempt))
@@ -511,6 +466,7 @@ impl Board {
             }
         }
 
+        // current move
         fen.push(' ');
         fen.push(
             self.to_move
@@ -521,8 +477,18 @@ impl Board {
                 .unwrap(),
         );
 
+        // castling rights
+        fen.push(' ');
+        if self.castling_rights.none() {
+            fen.push('-');
+        } else {
+            for right in self.castling_rights {
+                fen.push(right.into());
+            }
+        }
+
         // TODO: placeholder at end
-        fen.push_str(" e3 0 1");
+        fen.push_str(" - 0 1");
 
         fen
     }
