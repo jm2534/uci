@@ -27,6 +27,8 @@ pub enum Command {
 
     Debug(bool),
 
+    StartPosition(Board),
+
     /// Series of moves to apply to a board in a starting configuration
     MovePosition(Vec<Move>),
 
@@ -48,20 +50,27 @@ pub enum Command {
 
 impl Display for Command {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            Command::Uci => "uci",
-            Command::UciNewGame => "ucinewgame",
-            Command::Debug(true) => "debug on",
-            Command::Debug(false) => "debug off",
-            Command::MovePosition(_) => "position startpos",
-            Command::FenPosition(_) => "position fen",
-            Command::IsReady => "isready",
-            Command::Register => "register",
-            Command::Go => "go",
-            Command::Stop => "stop",
-            Command::Quit => "quit",
-        };
-        write!(f, "{s}")
+        match self {
+            Command::Uci => write!(f, "uci"),
+            Command::UciNewGame => write!(f, "ucinewgame"),
+            Command::Debug(true) => write!(f, "debug on"),
+            Command::Debug(false) => write!(f, "debug off"),
+            Command::StartPosition(_) => write!(f, "position startpos"),
+            Command::MovePosition(m) => write!(
+                f,
+                "position startpos moves {}",
+                m.iter()
+                    .map(|m| m.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            ),
+            Command::FenPosition(_) => write!(f, "position fen"),
+            Command::IsReady => write!(f, "isready"),
+            Command::Register => write!(f, "register"),
+            Command::Go => write!(f, "go"),
+            Command::Stop => write!(f, "stop"),
+            Command::Quit => write!(f, "quit"),
+        }
     }
 }
 
@@ -112,7 +121,7 @@ impl TryFrom<&str> for Command {
                                         CommandError::UnrecognizedArgument(value.to_owned())
                                     })
                             } else {
-                                unrecognized(value)
+                                Ok(Command::StartPosition(Board::new()))
                             }
                         }
                         Some(_) | None => return unrecognized(value),

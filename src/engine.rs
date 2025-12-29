@@ -29,9 +29,9 @@ impl Default for Engine<Minimax> {
     fn default() -> Self {
         Engine {
             state: Command::Uci,
-            board: Board::new(),
             debug: false,
-            strategy: Minimax,
+            board: Board::default(),
+            strategy: Minimax::default(),
         }
     }
 }
@@ -52,7 +52,7 @@ impl<S: Strategy> Engine<S> {
                 self.debug = debug;
                 Ok(None)
             }
-            Command::FenPosition(ref board) => {
+            Command::StartPosition(ref board) | Command::FenPosition(ref board) => {
                 self.board = board.to_owned();
                 Ok(None)
             }
@@ -69,7 +69,7 @@ impl<S: Strategy> Engine<S> {
             Command::Register => todo!(),
             Command::Go => {
                 let best_move = self.strategy.step(&mut self.board);
-                Ok(Some(best_move.to_string()))
+                Ok(Some(format!("bestmove {best_move} ponder {best_move}")))
             }
             Command::Stop => todo!(),
             Command::Quit => Ok(None),

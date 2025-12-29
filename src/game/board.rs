@@ -41,11 +41,17 @@ pub enum IllegalMove {
 
 /// Piece-specific sets of positions on the board for both players.
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
-struct Position([Bitset; 6]);
+pub struct Position([Bitset; 6]);
 
 impl Position {
-    /// Standard starting positions.
-    pub fn new() -> Self {
+    /// An instance with no pieces placed.
+    pub fn empty() -> Self {
+        Self([Bitset(0); 6])
+    }
+}
+
+impl Default for Position {
+    fn default() -> Self {
         Self([
             // pawns
             Bitset(0xFF << 8) | Bitset(0xFF << 48),
@@ -60,11 +66,6 @@ impl Position {
             // kings
             Tile::new(0, 4) | Tile::new(7, 4),
         ])
-    }
-
-    /// An instance with no pieces placed.
-    pub fn empty() -> Self {
-        Self([Bitset(0); 6])
     }
 }
 
@@ -159,7 +160,7 @@ impl Board {
     /// Creates a board in the default starting position.
     pub fn new() -> Self {
         // core bitboards
-        let positions = Position::new();
+        let positions = Position::default();
 
         // occupancy masks
         let white = Board::RANK_MASKS[0] | Board::RANK_MASKS[1];
@@ -224,6 +225,14 @@ impl Board {
                 nodes
             }
         }
+    }
+
+    pub fn positions(&self, kind: PieceKind) -> Bitset {
+        self.positions[kind]
+    }
+
+    pub fn occupancy(&self, color: Color) -> Bitset {
+        self.occupancy[color]
     }
 
     /// "Mailbox"-style occupancy representation of the board.
