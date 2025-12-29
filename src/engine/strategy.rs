@@ -15,7 +15,11 @@ pub trait Strategy {
     /// By default, lists the  moves available to the current player on the current `board`
     /// ordered by the results of `Strategy::evaluate` called on each position.
     fn order(&self, board: &Board) -> impl IntoIterator<Item = Move> {
-        let mut moves: Vec<Move> = board.possible_moves().collect();
+        let mut moves: Vec<Move> = board
+            .legal_moves(board.to_move())
+            .map(|(_, action)| action)
+            .collect();
+
         moves.sort_by(|m1, m2| {
             self.value(board.occupants()[m1.stop()].unwrap())
                 .cmp(&self.value(board.occupants()[m2.stop()].unwrap()))

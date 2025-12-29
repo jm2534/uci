@@ -1,16 +1,9 @@
-use std::isize;
-
 use super::Strategy;
 use crate::game::board::Board;
 use crate::game::moves::Move;
 
+#[derive(Default)]
 pub struct Minimax;
-
-impl Minimax {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
 
 #[derive(Eq, PartialEq)]
 struct ScoredMove {
@@ -24,9 +17,9 @@ impl Ord for ScoredMove {
     }
 }
 
-impl std::cmp::PartialOrd for ScoredMove {
+impl PartialOrd for ScoredMove {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.score.partial_cmp(&other.score)
+        Some(self.cmp(other))
     }
 }
 

@@ -81,12 +81,12 @@ const ROOK_SHIFTS: [u8; 64] = [
 
 /// Global attack table storage. Each square has its own sub-table indexed by
 /// the magic hash of the occupancy pattern.
-static ATTACK_TABLE: OnceLock<Vec<Vec<Bitset>>> = OnceLock::new();
+static ROOK_ATTACKS: OnceLock<Vec<Vec<Bitset>>> = OnceLock::new();
 
 /// Relevant rook movement patterns for each square, excluding the edge squares
 /// in any direction since, assuming as conventionally done that every blocker is
 /// capturable, pieces on the edge don't change the moveset.
-const MOVEMENT_MASKS: [Bitset; 64] = generate_movement_masks();
+const ROOK_MOVES: [Bitset; 64] = generate_movement_masks();
 
 const fn generate_movement_masks() -> [Bitset; 64] {
     let mut masks = [Bitset::empty(); 64];
@@ -125,16 +125,16 @@ const fn generate_movement_masks() -> [Bitset; 64] {
 }
 
 /// Initializes the magic bitboard lookup tables.
-/// This must be called before using `magic_rook_attacks()`.
+/// This must be called before using `magic_moves()`.
 /// Subsequent calls are no-ops (initialization happens only once).
 pub fn initialize() {
-    ATTACK_TABLE.get_or_init(|| {
+    ROOK_ATTACKS.get_or_init(|| {
         let mut tables = Vec::with_capacity(64);
 
         // for each tile...
         for tile in (0..64).map(Tile::from_index) {
             // first, get the movement pattern of a piece on this tile
-            let movement_mask = MOVEMENT_MASKS[tile];
+            let movement_mask = ROOK_MOVES[tile];
 
             // prepare tile's attack table holding a bitset for each possible blocker pattern
             let relevant_bits = ROOK_SHIFTS[tile];
@@ -160,7 +160,7 @@ pub fn initialize() {
 /// Returns the pre-computed rook attacks for a given tile.
 pub(crate) fn magic_moves(tile: Tile, occupancy: Bitset) -> Bitset {
     let index = magic_index(tile, occupancy);
-    ATTACK_TABLE
+    ROOK_ATTACKS
         .get()
         .expect("Magic bitboards not initialized - call Board::initialize() first")[tile][index]
 }
@@ -168,7 +168,7 @@ pub(crate) fn magic_moves(tile: Tile, occupancy: Bitset) -> Bitset {
 /// Computes the magic index for a given square and occupancy pattern.
 /// This is the core hash function that maps occupancy to attack table indices.
 fn magic_index(tile: Tile, occupancy: Bitset) -> usize {
-    let mask = MOVEMENT_MASKS[tile];
+    let mask = ROOK_MOVES[tile];
     let relevant_occupancy = occupancy & mask;
     let magic = ROOK_MAGICS[tile];
     let shift = 64 - ROOK_SHIFTS[tile];
@@ -230,7 +230,7 @@ mod tests {
     #[test]
     fn test_initialization() {
         initialize();
-        assert!(ATTACK_TABLE.get().is_some());
+        assert!(ROOK_ATTACKS.get().is_some());
     }
 
     #[test]
@@ -238,8 +238,8 @@ mod tests {
         // asserts that all indexed moves are correctly associated
         initialize();
         for tile in (0..64).map(Tile::from_index) {
-            let mask = MOVEMENT_MASKS[tile];
-            let attacks = ATTACK_TABLE.get().unwrap()[tile].as_slice();
+            let mask = ROOK_MOVES[tile];
+            let attacks = ROOK_ATTACKS.get().unwrap()[tile].as_slice();
 
             for i in 0..(1 << mask.len()) {
                 let occupancy = mask.occupancy(i);
@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn test_occupancy_mask_center() {
-        let mask = MOVEMENT_MASKS[Tile::D4];
+        let mask = ROOK_MOVES[Tile::D4];
         assert_eq!(mask.len(), 10);
 
         assert_eq!(
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn test_occupancy_mask_corner() {
-        let mask = MOVEMENT_MASKS[Tile::A1];
+        let mask = ROOK_MOVES[Tile::A1];
 
         // Corner square should have 12 relevant bits
         // File a: ranks 2-7 (6 squares)

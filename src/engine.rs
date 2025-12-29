@@ -31,14 +31,15 @@ impl Default for Engine<Minimax> {
             state: Command::Uci,
             board: Board::new(),
             debug: false,
-            strategy: Minimax::new(),
+            strategy: Minimax,
         }
     }
 }
 
 impl<S: Strategy> Engine<S> {
     pub fn finished(&self) -> bool {
-        self.board.winner().is_some()
+        // self.board.winner().is_some()
+        false
     }
 
     pub fn handle(&mut self, command: Command) -> Result<Option<String>, IllegalMove> {
@@ -57,9 +58,7 @@ impl<S: Strategy> Engine<S> {
             }
             Command::MovePosition(ref moves) => {
                 for attempt in moves {
-                    if let Err(e) = self.board.try_move(*attempt) {
-                        return Err(e);
-                    }
+                    self.board.try_move(*attempt)?;
                 }
                 Ok(None)
             }
@@ -76,7 +75,7 @@ impl<S: Strategy> Engine<S> {
             Command::Quit => Ok(None),
         };
 
-        if let Ok(_) = response {
+        if response.is_ok() {
             self.state = command;
         }
         response

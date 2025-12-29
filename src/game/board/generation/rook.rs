@@ -8,10 +8,10 @@ use crate::game::{Color, board::tile::Tile};
 impl Board {
     /// Generate all pseudo-legal moves for a rook at the given tile.
     /// Returns a bitboard of valid destination squares (excluding squares occupied by own pieces).
-    pub fn rook_moves(&self, tile: Tile) -> Bitset {
+    pub fn rook_moves(&self, color: Color, tile: Tile) -> Bitset {
         let all_occupancy = self.occupancy[Color::White] | self.occupancy[Color::Black];
         let moves = magic::magic_moves(tile, all_occupancy);
-        moves & !self.occupancy[self.to_move]
+        moves & !self.occupancy[color]
     }
 }
 
@@ -26,7 +26,7 @@ mod tests {
         magic::initialize();
         let mut board = Board::empty();
         board.to_move = Color::White;
-        let moves = board.rook_moves(Tile::D4);
+        let moves = board.rook_moves(board.to_move, Tile::D4);
 
         assert_eq!(
             moves & Board::RANK_MASKS[3],
@@ -49,7 +49,7 @@ mod tests {
         // Place blockers at d6 (north) and f4 (east)
         board.occupancy[Color::Black] = Tile::D6.as_bitset() | Tile::F4.as_bitset();
 
-        let moves = board.rook_moves(rook_pos);
+        let moves = board.rook_moves(board.to_move, rook_pos);
 
         // Can move to blocker squares (captures)
         assert!(moves.contains(Tile::D6));
@@ -74,11 +74,11 @@ mod tests {
         board.to_move = Color::White;
 
         // Test from a1
-        let moves = board.rook_moves(Tile::A1);
+        let moves = board.rook_moves(board.to_move, Tile::A1);
         assert_eq!(moves.len(), 14); // 7 squares on rank + 7 on file
 
         // Test from h8
-        let moves = board.rook_moves(Tile::H8);
+        let moves = board.rook_moves(board.to_move, Tile::H8);
         assert_eq!(moves.len(), 14);
     }
 
@@ -90,7 +90,7 @@ mod tests {
         board.to_move = Color::White;
         let rook_pos = Tile::D4;
 
-        let moves = board.rook_moves(rook_pos);
+        let moves = board.rook_moves(board.to_move, rook_pos);
 
         // On empty board from center, should have 14 moves
         assert_eq!(moves.len(), 14);
@@ -110,7 +110,7 @@ mod tests {
             | Tile::G4.as_bitset()
             | Tile::A4.as_bitset();
 
-        let moves = board.rook_moves(rook_pos);
+        let moves = board.rook_moves(board.to_move, rook_pos);
 
         // Should be able to capture all enemy pieces
         assert!(moves.contains(Tile::D7));
@@ -131,7 +131,7 @@ mod tests {
         board.occupancy[Color::White] =
             Tile::D4.as_bitset() | Tile::D6.as_bitset() | Tile::F4.as_bitset();
 
-        let moves = board.rook_moves(rook_pos);
+        let moves = board.rook_moves(board.to_move, rook_pos);
 
         // Should NOT be able to move to squares occupied by own pieces
         assert!(!moves.contains(Tile::D6));

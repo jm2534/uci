@@ -10,35 +10,23 @@ mod pawn;
 mod queen;
 pub(crate) mod rook;
 
-use super::{Bitset, Board};
-use crate::game::{board::tile::Tile, piece::PieceKind};
-
-impl Board {
-    /// Returns a bitboard of all valid destination squares for the piece at the given tile.
-    pub fn moves_from_tile(&self, tile: Tile, piece_kind: PieceKind) -> Bitset {
-        match piece_kind {
-            PieceKind::Pawn => self.pawn_moves(tile),
-            PieceKind::Knight => self.knight_moves(tile),
-            PieceKind::Bishop => self.bishop_moves(tile),
-            PieceKind::Rook => self.rook_moves(tile),
-            PieceKind::Queen => self.queen_moves(tile),
-            PieceKind::King => self.king_moves(tile),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::game::moves::Move;
-
-    use super::*;
+    use crate::game::{
+        board::{Board, tile::Tile},
+        moves::Move,
+        piece::PieceKind,
+    };
     use std::collections::HashSet;
 
     #[test]
     fn test_initial_board_generation() {
         Board::initialize();
         let board = Board::new();
-        let moves: HashSet<Move> = board.possible_moves().collect();
+        let moves: HashSet<Move> = board
+            .legal_moves(board.to_move())
+            .map(|(_, action)| action)
+            .collect();
 
         let mut expected_moves = HashSet::new();
         let pawns = board.positions[PieceKind::Pawn] & board.occupancy[board.to_move];

@@ -1,12 +1,12 @@
 //! Queen move generation using bitboard techniques.
 
 use super::super::{Bitset, Board};
-use crate::game::board::tile::Tile;
+use crate::game::{Color, board::tile::Tile};
 
 impl Board {
     /// Generate all possible moves for a queen at the given tile.
-    pub(super) fn queen_moves(&self, tile: Tile) -> Bitset {
-        self.rook_moves(tile) | self.bishop_moves(tile)
+    pub fn queen_moves(&self, color: Color, tile: Tile) -> Bitset {
+        self.rook_moves(color, tile) | self.bishop_moves(color, tile)
     }
 }
 

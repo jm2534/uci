@@ -17,7 +17,6 @@ use uci::{
         Color,
         board::{Board, tile::Tile},
         moves::Move,
-        piece::Piece,
     },
 };
 
@@ -31,7 +30,7 @@ pub fn prompt_color() -> Color {
 
 #[derive(Debug)]
 pub enum SelectionResult {
-    Selected(Piece),
+    Selected,
     Deselected,
     MoveMade(Move),
     InvalidPiece,
@@ -133,7 +132,7 @@ impl Game {
             }
             Action::Select => {
                 match self.state.toggle_selection(&self.engine.board) {
-                    SelectionResult::Selected(_) => {
+                    SelectionResult::Selected => {
                         // Successfully selected a piece - visual feedback already handled by render
                     }
                     SelectionResult::Deselected => {
@@ -268,12 +267,15 @@ impl State {
                 SelectionResult::Deselected
             } else {
                 // try to make a move
-                let attempted_move = Move::new(selected, self.cursor_pos);
-                debug!(piece = ?board.occupant(selected), position = %selected, attempt = %attempted_move, "Attempting move");
-                if self.available_moves.contains(&attempted_move) {
+                debug!(piece = ?board.occupant(selected), position = %selected, attempt = %Move::new(selected, self.cursor_pos), "Attempting move");
+                if let Some(&attempt) = self
+                    .available_moves
+                    .iter()
+                    .find(|&m| m.start() == selected && m.stop() == self.cursor_pos)
+                {
                     self.selected_pos = None;
                     self.available_moves.clear();
-                    SelectionResult::MoveMade(attempted_move)
+                    SelectionResult::MoveMade(attempt)
                 } else {
                     debug!(moveset = ?self.available_moves, "Move not in moveset");
                     // try to select piece at cursor
@@ -294,12 +296,10 @@ impl State {
                 // Valid piece to select
                 self.selected_pos = Some(self.cursor_pos);
                 self.available_moves = board
-                    .moves_from_tile(self.cursor_pos, piece.kind)
-                    .tiles()
-                    .map(|to| Move::new(self.cursor_pos, to))
-                    .filter(|mv| board.possible_moves().any(|legal_move| legal_move == *mv))
+                    .legal_moves_from_tile(board.to_move(), piece.kind, self.cursor_pos)
+                    .map(|(_, m)| m)
                     .collect();
-                SelectionResult::Selected(piece)
+                SelectionResult::Selected
             } else {
                 SelectionResult::InvalidPiece
             }
@@ -481,7 +481,28 @@ pub(super) mod render {
 
         current_row += 1;
         stdout.queue(MoveTo(0, current_row))?;
-        stdout.queue(Print(format!("Cursor: {}", state.cursor_pos)))?;
+        let cursor_str = format!("Cursor: {}", state.cursor_pos);
+        let cursor_str_len = cursor_str.len() as u16;
+        stdout.queue(Print(cursor_str))?;
+
+        if let Some(special) = state
+            .available_moves
+            .iter()
+            .find(|m| m.stop() == state.cursor_pos)
+            .and_then(|m| m.special())
+        {
+            stdout.queue(MoveTo(cursor_str_len as u16 + 1, current_row))?;
+            stdout.queue(Print(format!("({})", special.to_string().to_lowercase())))?;
+        }
+
+        // win conditions
+        if let Some(winner) = board.winner() {
+            stdout.queue(MoveTo(start_col + 25, start_row + 5))?;
+            stdout.queue(Print(format!("{} wins!", winner)))?;
+        } else if let Some(_) = board.in_check() {
+            stdout.queue(MoveTo(start_col + 25, start_row + 5))?;
+            stdout.queue(Print("Check!"))?;
+        }
 
         stdout.flush()?;
         Ok(())

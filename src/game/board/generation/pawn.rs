@@ -6,10 +6,10 @@ use crate::game::{
     color::Color,
 };
 
-/// Pre-computed pawn attack patterns indexed by [color][square].
-pub const PAWN_MOVES: [[Bitset; 64]; 2] = generate_pawn_attacks_table();
-
 impl Board {
+    /// Pre-computed pawn attack patterns indexed by [color][square].
+    pub(in crate::game::board) const PAWN_MOVES: [[Bitset; 64]; 2] = generate_pawn_attacks_table();
+
     /// Generate all pseudo-legal moves assuming a pawn at the given tile.
     pub fn pawn_moves(&self, tile: Tile) -> Bitset {
         // pawn moves are simply single/double pushes + attacks
@@ -48,7 +48,7 @@ impl Board {
         // TODO: Add en passant captures when board state supports it
         // can only capture squares with enemy pieces
         let enemy_occupied = self.occupancy[!self.to_move];
-        let attack_pattern = PAWN_MOVES[self.to_move as usize][tile];
+        let attack_pattern = Board::PAWN_MOVES[self.to_move as usize][tile];
         attack_pattern & enemy_occupied
     }
 }
@@ -91,7 +91,7 @@ mod attack_tests {
     fn test_white_pawn_center_attacks() {
         // white pawn on d4 should attack c5 and e5
         let index = Tile::D4;
-        let attacks = PAWN_MOVES[Color::White][index];
+        let attacks = Board::PAWN_MOVES[Color::White][index];
         let expected = Tile::C5 | Tile::E5;
         assert_eq!(attacks, expected);
     }
@@ -100,7 +100,7 @@ mod attack_tests {
     fn test_black_pawn_center_attacks() {
         // black pawn on d5 should attack c4 and e4
         let index = Tile::D5;
-        let attacks = PAWN_MOVES[Color::Black][index];
+        let attacks = Board::PAWN_MOVES[Color::Black][index];
         let expected = Tile::C4 | Tile::E4;
         assert_eq!(attacks, expected);
     }
@@ -109,7 +109,7 @@ mod attack_tests {
     fn test_white_pawn_file_edge_attack() {
         // white pawn on a4 should attack b5
         let index = Tile::A4;
-        let attacks = PAWN_MOVES[Color::White][index];
+        let attacks = Board::PAWN_MOVES[Color::White][index];
         let expected = Tile::B5.as_bitset();
         assert_eq!(attacks, expected);
     }
@@ -118,7 +118,7 @@ mod attack_tests {
     fn test_black_pawn_file_edge_attack() {
         // black pawn on a5 should attack b4
         let index = Tile::A5;
-        let attacks = PAWN_MOVES[Color::Black][index];
+        let attacks = Board::PAWN_MOVES[Color::Black][index];
         let expected = Tile::B4.as_bitset();
         assert_eq!(attacks, expected);
     }
@@ -127,7 +127,7 @@ mod attack_tests {
     fn test_white_pawn_rank_edge_attacks() {
         // white pawn on last rank should not attack
         let index = Tile::H8;
-        let attacks = PAWN_MOVES[Color::White][index];
+        let attacks = Board::PAWN_MOVES[Color::White][index];
         let expected = Bitset(0);
         assert_eq!(attacks, expected);
     }
@@ -136,7 +136,7 @@ mod attack_tests {
     fn test_black_pawn_rank_edge_attacks() {
         // black pawn on a5 should attack b4
         let index = Tile::A1;
-        let attacks = PAWN_MOVES[Color::Black][index];
+        let attacks = Board::PAWN_MOVES[Color::Black][index];
         let expected = Bitset(0);
         assert_eq!(attacks, expected);
     }

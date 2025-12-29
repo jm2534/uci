@@ -2,7 +2,7 @@ use crate::game::board::{Board, bitset::Bitset};
 use paste::paste;
 use std::{
     fmt::Display,
-    ops::{BitAnd, BitOr, BitXor, Index},
+    ops::{BitAnd, BitOr, BitXor, Index, IndexMut},
 };
 use thiserror::Error;
 
@@ -63,7 +63,7 @@ impl Tile {
     pub fn new(rank: u8, file: u8) -> Self {
         let rank_shift = Board::MAX_DIM as u64 * rank.min(Board::MAX_DIM - 1) as u64;
         let file_shift = file.min(Board::MAX_DIM - 1) as u64;
-        let value = 1 << (rank_shift as u64 + file_shift);
+        let value = 1 << (rank_shift + file_shift);
         Self(Bitset(value))
     }
 
@@ -123,7 +123,7 @@ impl Tile {
 
     fn parse_file(ch: char) -> Option<u8> {
         match ch {
-            'a'..='h' => Some((ch as u8) - ('a' as u8)),
+            'a'..='h' => Some((ch as u8) - b'a'),
             _ => None,
         }
     }
@@ -153,6 +153,18 @@ impl<T> Index<Tile> for [T] {
 
     fn index(&self, index: Tile) -> &Self::Output {
         &self[index.as_index()]
+    }
+}
+
+impl<T> IndexMut<Tile> for Vec<T> {
+    fn index_mut(&mut self, index: Tile) -> &mut Self::Output {
+        &mut self[index.as_index()]
+    }
+}
+
+impl<T> IndexMut<Tile> for [T] {
+    fn index_mut(&mut self, index: Tile) -> &mut Self::Output {
+        &mut self[index.as_index()]
     }
 }
 
@@ -194,9 +206,9 @@ pub enum TileConversionError {
     Empty,
 }
 
-impl Into<u64> for Tile {
-    fn into(self) -> u64 {
-        self.0.into()
+impl From<Tile> for u64 {
+    fn from(tile: Tile) -> Self {
+        tile.0.into()
     }
 }
 
@@ -207,7 +219,7 @@ impl TryFrom<u64> for Tile {
         let value = Bitset(value);
         if value.len() > 1 {
             Err(TileConversionError::MultipleTiles(value))
-        } else if value.len() == 0 {
+        } else if value.is_empty() {
             Err(TileConversionError::Empty)
         } else {
             Ok(Self(value))

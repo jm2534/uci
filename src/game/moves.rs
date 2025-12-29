@@ -1,7 +1,13 @@
-use std::{fmt::Display, sync::LazyLock};
+use std::{
+    fmt::{Display, Formatter},
+    ops::{BitOr, BitOrAssign},
+    sync::LazyLock,
+};
 
 use regex::Regex;
 use thiserror::Error;
+
+use crate::game::piece::PieceKind;
 
 use super::{
     board::tile::{Tile, TileParseError},
@@ -23,16 +29,34 @@ pub enum MoveKind {
     QueenCastle,
 
     /// A move resulting in the capture of the contained piece
-    Capture(Piece),
+    Capture(PieceKind),
 
     /// A capture accomplished through enpassant
-    EnPassantCapture(Piece),
+    EnPassantCapture(PieceKind),
 
     /// A promotion of a piece into the contained piece
-    Promotion(Piece),
+    Promotion(PieceKind),
 
     /// A promotion of a piece into the first contained piece, capturing the second
     PromotionCapture(Piece, Piece),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[repr(u8)]
+pub enum SpecialMove {
+    Promotion = 1,
+    EnPassant = 2,
+    Castle = 3,
+}
+
+impl Display for SpecialMove {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SpecialMove::Promotion => write!(f, "Promotion"),
+            SpecialMove::EnPassant => write!(f, "EnPassant"),
+            SpecialMove::Castle => write!(f, "Castle"),
+        }
+    }
 }
 
 /// Stockfish definition of a move:
@@ -62,6 +86,32 @@ impl Move {
 
     pub fn stop(&self) -> Tile {
         Tile::from_index((self.0 & 0x0FC0) as usize >> 6)
+    }
+
+    pub fn special(&self) -> Option<SpecialMove> {
+        let value = (self.0 >> 14) as u8;
+
+        // Safety: Self is typed to have a u16, so there will only ever be 4 values
+        // after shifting by 14, one being 0 and the other 3 being valid SpecialMoves
+        if value == 0 {
+            None
+        } else {
+            Some(unsafe { std::mem::transmute::<u8, SpecialMove>(value) })
+        }
+    }
+}
+
+impl BitOr<SpecialMove> for Move {
+    type Output = Self;
+
+    fn bitor(self, rhs: SpecialMove) -> Self::Output {
+        Self(self.0 | ((rhs as u16) << 14))
+    }
+}
+
+impl BitOrAssign<SpecialMove> for Move {
+    fn bitor_assign(&mut self, rhs: SpecialMove) {
+        *self = *self | rhs;
     }
 }
 
@@ -94,7 +144,7 @@ impl TryFrom<&str> for Move {
         match value.trim() {
             Move::NULL_MOVE => Err(MoveParseError::NullMove),
             trimmed => {
-                let re: &Regex = &*REGEX;
+                let re: &Regex = &REGEX;
                 let captures = re.captures(value);
 
                 match captures {
@@ -117,7 +167,6 @@ impl TryFrom<&str> for Move {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
     use anyhow::Result;
 
@@ -202,5 +251,74 @@ mod tests {
             Move::try_from(value),
             Err(MoveParseError::BadFormat(value.to_owned()))
         );
+    }
+
+    #[test]
+    fn test_empty_special() {
+        let value = Move::try_from("e2e4").unwrap();
+        assert!(value.special().is_none());
+    }
+
+    #[test]
+    fn test_special_promotion() {
+        let mut value = Move::try_from("e7e8q").unwrap();
+        value.0 |= 0b0100_0000_0000_0000;
+
+        assert_eq!(value.special(), Some(SpecialMove::Promotion));
+        assert_eq!(value.start(), Tile::E7);
+        assert_eq!(value.stop(), Tile::E8);
+    }
+
+    #[test]
+    fn test_special_enpassant() {
+        let mut value = Move::try_from("e1g1").unwrap();
+        value.0 |= 0b1000_0000_0000_0000;
+
+        assert_eq!(value.special(), Some(SpecialMove::EnPassant));
+        assert_eq!(value.start(), Tile::E1);
+        assert_eq!(value.stop(), Tile::G1);
+    }
+
+    #[test]
+    fn test_special_castling() {
+        let mut value = Move::try_from("e1g1").unwrap();
+        value.0 |= 0b1100_0000_0000_0000;
+
+        assert_eq!(value.special(), Some(SpecialMove::Castle));
+        assert_eq!(value.start(), Tile::E1);
+        assert_eq!(value.stop(), Tile::G1);
+    }
+
+    #[test]
+    fn test_move_or_promotion() {
+        let mut value = Move::try_from("e7e8q").unwrap();
+        value |= SpecialMove::Promotion;
+
+        assert_eq!(value.0 >> 14, 1);
+        assert_eq!(value.special(), Some(SpecialMove::Promotion));
+        assert_eq!(value.start(), Tile::E7);
+        assert_eq!(value.stop(), Tile::E8);
+    }
+
+    #[test]
+    fn test_move_or_enpassant() {
+        let mut value = Move::try_from("e1g1").unwrap();
+        value |= SpecialMove::EnPassant;
+
+        assert_eq!(value.0 >> 14, 2);
+        assert_eq!(value.special(), Some(SpecialMove::EnPassant));
+        assert_eq!(value.start(), Tile::E1);
+        assert_eq!(value.stop(), Tile::G1);
+    }
+
+    #[test]
+    fn test_move_or_castle() {
+        let mut value = Move::try_from("e1g1").unwrap();
+        value |= SpecialMove::Castle;
+
+        assert_eq!(value.0 >> 14, 3);
+        assert_eq!(value.special(), Some(SpecialMove::Castle));
+        assert_eq!(value.start(), Tile::E1);
+        assert_eq!(value.stop(), Tile::G1);
     }
 }
