@@ -28,6 +28,12 @@ pub fn prompt_color() -> Color {
     ans.unwrap().parse::<Color>().expect("Color parsing error")
 }
 
+pub fn prompt_number_of_players() -> usize {
+    let options: Vec<&str> = vec!["0", "1", "2"];
+    let ans: Result<&str, InquireError> = Select::new("Number of human players:", options).prompt();
+    ans.unwrap().parse::<usize>().expect("Number parsing error")
+}
+
 #[derive(Debug)]
 pub enum SelectionResult {
     Selected,
@@ -499,7 +505,7 @@ pub(super) mod render {
         if let Some(winner) = board.winner() {
             stdout.queue(MoveTo(start_col + 25, start_row + 5))?;
             stdout.queue(Print(format!("{} wins!", winner)))?;
-        } else if let Some(_) = board.in_check() {
+        } else if board.in_check().is_some() {
             stdout.queue(MoveTo(start_col + 25, start_row + 5))?;
             stdout.queue(Print("Check!"))?;
         }

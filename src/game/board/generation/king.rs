@@ -10,10 +10,10 @@ impl Board {
     pub(in crate::game::board) const KING_MOVES: [Bitset; 64] = generate_king_moves_table();
 
     const KING_STARTING_POSITIONS: [Tile; 2] = [Tile::E8, Tile::E1];
-    const WHITE_KINGSIDE_PATH: Bitset = Bitset(0x60); // f1, g1
-    const WHITE_QUEENSIDE_PATH: Bitset = Bitset(0x0E); // b1, c1, d1
-    const BLACK_KINGSIDE_PATH: Bitset = Bitset(0xC0); // f8, g8
-    const BLACK_QUEENSIDE_PATH: Bitset = Bitset(0x38); // b8, c8, d8
+    const WHITE_KINGSIDE_PATH: Bitset = Bitset((1 << 5) | (1 << 6)); // f1, g1
+    const WHITE_QUEENSIDE_PATH: Bitset = Bitset((1 << 1) | (1 << 2) | (1 << 3)); // b1, c1, d1
+    const BLACK_KINGSIDE_PATH: Bitset = Bitset((1 << 61) | (1 << 62)); // f8, g8
+    const BLACK_QUEENSIDE_PATH: Bitset = Bitset((1 << 57) | (1 << 58) | (1 << 59)); // b8, c8, d8
 
     /// Generate pseudo-legal moves assuming a king at the given tile, excluding castling moves.
     pub fn king_moves(&self, color: Color, tile: Tile) -> Bitset {
@@ -232,6 +232,14 @@ mod generation_tests {
 #[cfg(test)]
 mod castling_tests {
     use super::*;
+
+    #[test]
+    fn test_paths() {
+        assert_eq!(Board::BLACK_KINGSIDE_PATH, Tile::F8 | Tile::G8);
+        assert_eq!(Board::BLACK_QUEENSIDE_PATH, Tile::B8 | Tile::C8 | Tile::D8);
+        assert_eq!(Board::WHITE_KINGSIDE_PATH, Tile::F1 | Tile::G1);
+        assert_eq!(Board::WHITE_QUEENSIDE_PATH, Tile::B1 | Tile::C1 | Tile::D1);
+    }
 
     #[test]
     fn test_white_king_side_simple() {

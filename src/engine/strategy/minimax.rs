@@ -1,7 +1,7 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use super::Strategy;
+use crate::game::Color;
 use crate::game::board::Board;
 use crate::game::moves::Move;
 
@@ -169,13 +169,19 @@ impl Strategy for Minimax {
                 break; // time's up
             }
 
-            let (result, nodes) = self.maxvalue(board.to_owned(), depth, isize::MIN, isize::MAX);
+            let alpha = isize::MIN;
+            let beta = isize::MAX;
+            let (result, nodes) = match board.to_move() {
+                Color::Black => self.minvalue(board.to_owned(), depth, alpha, beta),
+                Color::White => self.maxvalue(board.to_owned(), depth, alpha, beta),
+            };
+
             if let Some(mv) = result.attempt {
                 best_move = Some(mv);
-                println!(
-                    "info depth {} score {} move {}, nodes {}",
-                    depth, result.score, mv, nodes
-                );
+                // println!(
+                //     "info depth {} score {} move {}, nodes {}",
+                //     depth, result.score, mv, nodes
+                // );
             }
         }
 

@@ -122,6 +122,9 @@ pub struct Board {
 
     /// Player's castling rights
     castling_rights: CastlingRights,
+
+    /// Player's moves
+    moves: Vec<Move>,
 }
 
 impl Board {
@@ -188,6 +191,7 @@ impl Board {
         Self {
             occupants,
             positions,
+            moves: Vec::new(),
             pinned: Bitset(0),
             occupancy: [black, white],
             to_move: Color::White,
@@ -198,6 +202,7 @@ impl Board {
     /// Creates an empty board, i.e. one with no pieces placed and white to move.
     pub fn empty() -> Self {
         Board {
+            moves: Vec::new(),
             pinned: Bitset(0),
             occupants: [None; 64],
             occupancy: [Bitset(0), Bitset(0)],
@@ -280,7 +285,15 @@ impl Board {
         match self.try_move(attempt) {
             Ok(_) => true,
             Err(IllegalMove::Check) => false,
-            Err(e) => panic!("Engine generated invalid pseudo-legal move {attempt}: {e}"),
+            Err(e) => panic!(
+                "Engine generated invalid pseudo-legal move {attempt}: {e}.\nBoard: {}\nMoves: {}",
+                self.fen(),
+                self.moves
+                    .into_iter()
+                    .map(|m| m.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            ),
         }
     }
 
@@ -550,6 +563,7 @@ impl Board {
 
                     self.to_move = !self.to_move;
                     self.manage_castling_rights(piece, attempt, captured);
+                    self.moves.push(attempt);
                     Ok(captured
                         .map(|p| MoveKind::Capture(p.kind))
                         .unwrap_or(MoveKind::Quiet))

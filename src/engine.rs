@@ -8,7 +8,10 @@ const AUTHOR: &str = env!("CARGO_PKG_AUTHORS");
 
 use crate::{
     command::Command,
-    game::board::{Board, IllegalMove},
+    game::{
+        board::{Board, IllegalMove},
+        moves::MoveKind,
+    },
 };
 
 pub struct Engine<S: Strategy> {
@@ -40,6 +43,11 @@ impl<S: Strategy> Engine<S> {
     pub fn finished(&self) -> bool {
         // self.board.winner().is_some()
         false
+    }
+
+    pub fn step(&mut self) -> Result<MoveKind, IllegalMove> {
+        let cpu_move = self.strategy.step(&mut self.board);
+        self.board.try_move(cpu_move)
     }
 
     pub fn handle(&mut self, command: Command) -> Result<Option<String>, IllegalMove> {

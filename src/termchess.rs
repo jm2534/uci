@@ -30,6 +30,8 @@ fn main() -> io::Result<()> {
     };
 
     terminal::render::clear()?;
+    let n_players = terminal::prompt_number_of_players();
+    terminal::render::clear()?;
     let color = terminal::prompt_color();
     terminal::init_terminal()?;
 
@@ -45,17 +47,27 @@ fn main() -> io::Result<()> {
     let handle = thread::spawn(move || {
         while !game.finished() {
             game.draw().expect("Failed to draw game!");
-            let action;
-            loop {
-                if let Ok(result) = crossterm::event::read()
-                    .expect("Failed to read command!")
-                    .try_into()
-                {
-                    action = result;
-                    break;
+            if (n_players == 1 && game.engine.board.to_move() != color) || n_players == 0 {
+                // compuater move
+                terminal::cleanup_terminal().unwrap();
+                game.engine
+                    .step()
+                    .expect("Computer produced an illegal move!");
+                terminal::init_terminal().unwrap();
+            } else if n_players >= 1 {
+                // player move
+                let action;
+                loop {
+                    if let Ok(result) = crossterm::event::read()
+                        .expect("Failed to read command!")
+                        .try_into()
+                    {
+                        action = result;
+                        break;
+                    }
                 }
+                game.handle(action);
             }
-            game.handle(action);
         }
         game.draw().expect("Failed to draw game!");
     });
