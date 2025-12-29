@@ -17,9 +17,9 @@ impl Ord for ScoredMove {
     }
 }
 
-impl std::cmp::PartialOrd for ScoredMove {
+impl PartialOrd for ScoredMove {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.score.partial_cmp(&other.score)
+        Some(self.cmp(other))
     }
 }
 

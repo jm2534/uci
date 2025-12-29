@@ -18,10 +18,7 @@ use crate::game::{
     piece::{Piece, PieceKind},
 };
 use bitset::Bitset;
-use std::{
-    iter::Chain,
-    ops::{Index, IndexMut},
-};
+use std::ops::{Index, IndexMut};
 use thiserror::Error;
 
 use super::moves::{Move, MoveKind};
@@ -476,8 +473,7 @@ impl Board {
                 // first check that the tile is even in the pseudo-legal moveset
                 if self
                     .pseudo_legal_movesets_from_tile(player, kind, start)
-                    .find(|&(_, m)| m == attempt)
-                    .is_some()
+                    .any(|(_, m)| m == attempt)
                 {
                     // move execution
                     let captured = self.make_move(piece, start, stop);
@@ -516,10 +512,10 @@ impl Board {
     /// Returns the player in check, if any.
     pub fn in_check(&self) -> Option<Color> {
         for color in enum_iterator::all::<Color>() {
-            if let Some(tile) = self.king_of(color) {
-                if self.is_attacked(tile, !color) {
-                    return Some(color);
-                }
+            if let Some(tile) = self.king_of(color)
+                && self.is_attacked(tile, !color)
+            {
+                return Some(color);
             }
         }
         None
@@ -528,13 +524,13 @@ impl Board {
     /// Returns the winner of the current board, if any. Useful for checking
     /// if a game has ended.
     pub fn winner(&self) -> Option<Color> {
-        if let Some(king) = self.king_of(self.to_move) {
-            if self.is_attacked(king, !self.to_move)
-                && self.legal_moves(self.to_move).next().is_none()
-            {
-                return Some(!self.to_move);
-            }
+        if let Some(king) = self.king_of(self.to_move)
+            && self.is_attacked(king, !self.to_move)
+            && self.legal_moves(self.to_move).next().is_none()
+        {
+            return Some(!self.to_move);
         }
+
         None
     }
 
@@ -667,7 +663,6 @@ impl Iterator for CastlingMoves {
 struct PieceMoves {
     kind: PieceKind,
     tile: Tile,
-    color: Color,
     moveset: Tiles,
     castling_moves: Tiles,
 }
@@ -687,7 +682,6 @@ impl PieceMoves {
         Self {
             kind,
             tile,
-            color,
             moveset,
             castling_moves,
         }

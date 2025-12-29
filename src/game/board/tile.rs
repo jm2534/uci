@@ -194,9 +194,9 @@ pub enum TileConversionError {
     Empty,
 }
 
-impl Into<u64> for Tile {
-    fn into(self) -> u64 {
-        self.0.into()
+impl From<Tile> for u64 {
+    fn from(tile: Tile) -> Self {
+        tile.0.into()
     }
 }
 

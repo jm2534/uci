@@ -96,7 +96,7 @@ impl Move {
         if value == 0 {
             None
         } else {
-            Some(unsafe { std::mem::transmute(value) })
+            Some(unsafe { std::mem::transmute::<u8, SpecialMove>(value) })
         }
     }
 }
@@ -144,7 +144,7 @@ impl TryFrom<&str> for Move {
         match value.trim() {
             Move::NULL_MOVE => Err(MoveParseError::NullMove),
             trimmed => {
-                let re: &Regex = &*REGEX;
+                let re: &Regex = &REGEX;
                 let captures = re.captures(value);
 
                 match captures {
