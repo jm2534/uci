@@ -2,7 +2,7 @@ use crate::game::board::{Board, bitset::Bitset};
 use paste::paste;
 use std::{
     fmt::Display,
-    ops::{BitAnd, BitOr, BitXor, Index},
+    ops::{BitAnd, BitOr, BitXor, Index, IndexMut},
 };
 use thiserror::Error;
 
@@ -153,6 +153,18 @@ impl<T> Index<Tile> for [T] {
 
     fn index(&self, index: Tile) -> &Self::Output {
         &self[index.as_index()]
+    }
+}
+
+impl<T> IndexMut<Tile> for Vec<T> {
+    fn index_mut(&mut self, index: Tile) -> &mut Self::Output {
+        &mut self[index.as_index()]
+    }
+}
+
+impl<T> IndexMut<Tile> for [T] {
+    fn index_mut(&mut self, index: Tile) -> &mut Self::Output {
+        &mut self[index.as_index()]
     }
 }
 

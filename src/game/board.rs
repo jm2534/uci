@@ -416,7 +416,19 @@ impl Board {
             // any rook capture
             && !(attempt.stop() & ROOK_STARTS[color]).is_empty()
         {
-            // TODO: remove opponent's rook from caslting rights
+            if attempt.stop().file() == Board::MAX_DIM - 1 {
+                if color == Color::White {
+                    self.castling_rights.unset(Right::WhiteKingSide);
+                } else {
+                    self.castling_rights.unset(Right::BlackKingSide);
+                }
+            } else if attempt.stop().file() == Board::MIN_DIM {
+                if color == Color::White {
+                    self.castling_rights.unset(Right::WhiteQueenSide);
+                } else {
+                    self.castling_rights.unset(Right::BlackQueenSide);
+                }
+            }
         }
     }
 
@@ -457,6 +469,45 @@ impl Board {
             self.occupancy[captured.color] |= stop;
             self.occupants[stop.as_index()] = Some(captured);
         }
+
+        // TODO: other state changes
+    }
+
+    fn castle(&mut self, color: Color, attempt: Move) {
+        debug_assert_eq!(
+            attempt.special(),
+            Some(SpecialMove::Castle),
+            "Attempted a castle on a non-castle attempted move"
+        );
+
+        let rank = attempt.start().rank();
+        let (rook_start, rook_stop) = if attempt.stop().file() == 6 {
+            // Kingside: rook h→f
+            (Tile::new(rank, 7), Tile::new(rank, 5))
+        } else {
+            // Queenside: rook a→d
+            (Tile::new(rank, 0), Tile::new(rank, 3))
+        };
+
+        debug_assert_eq!(
+            self.occupants[rook_start],
+            Some(Piece {
+                kind: PieceKind::Rook,
+                color
+            }),
+            "Rook not found at start position for castling"
+        );
+
+        self.positions[PieceKind::Rook] ^= rook_start;
+        self.positions[PieceKind::Rook] |= rook_stop;
+        self.occupancy[color] ^= rook_start;
+
+        self.occupancy[color] |= rook_stop;
+        self.occupants[rook_start] = None;
+        self.occupants[rook_stop] = Some(Piece {
+            color,
+            kind: PieceKind::Rook,
+        });
     }
 
     /// Tries to make `attempt` on the given board, returning the kind of move (or error) that occurred.
@@ -485,12 +536,11 @@ impl Board {
                         self.unmake_move(piece, start, stop, captured);
                         return Err(IllegalMove::Check);
                     } else if let Some(SpecialMove::Castle) = attempt.special() {
-                        // move rook for castle
+                        self.castle(player, attempt)
                     }
 
                     self.to_move = !self.to_move;
                     self.manage_castling_rights(piece, attempt, captured);
-
                     Ok(captured
                         .map(|p| MoveKind::Capture(p.kind))
                         .unwrap_or(MoveKind::Quiet))
@@ -704,8 +754,9 @@ impl PieceMoves {
 mod board_tests {
     use super::Board;
     use crate::game::Move;
+    use crate::game::board::Right;
     use crate::game::color::Color;
-    use crate::game::moves::SpecialMove;
+    use crate::game::moves::{MoveKind, SpecialMove};
     use crate::{
         game::board::{
             Tile,
@@ -847,5 +898,38 @@ mod board_tests {
             .filter_map(|(k, m)| if k == PieceKind::King { Some(m) } else { None })
             .collect::<HashSet<Move>>();
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_white_rook_queen_side_capture_removes_castling_right() {
+        let fen = "8/8/8/8/8/8/q7/R3K3 b KQkq - 0 1";
+        let mut board = Board::try_from(fen).unwrap();
+        Board::initialize();
+
+        assert!(board.castling_rights().has(Right::WhiteQueenSide));
+        let capture = Move::new(Tile::A2, Tile::A1);
+        let result = board.try_move(capture).unwrap();
+
+        assert_eq!(result, MoveKind::Capture(PieceKind::Rook));
+        assert!(!board.castling_rights().has(Right::WhiteQueenSide));
+    }
+
+    #[test]
+    fn test_white_queen_side_castle_rook_movements() {
+        let fen = "8/8/8/8/8/8/PPPPPPPP/R3KBNR w KQkq - 0 1";
+        let mut board = Board::try_from(fen).unwrap();
+        Board::initialize();
+
+        let attempt = Move::new(Tile::E1, Tile::C1) | SpecialMove::Castle;
+        board.try_move(attempt).unwrap();
+
+        assert!(board.occupants[Tile::A1].is_none());
+        assert_eq!(
+            board.occupants[Tile::D1],
+            Some(Piece {
+                kind: PieceKind::Rook,
+                color: Color::White
+            })
+        );
     }
 }
