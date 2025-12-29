@@ -48,25 +48,6 @@ pub trait Strategy {
         value
     }
 
-    /// By default, lists the  moves available to the current player on the current `board`
-    /// ordered by the results of `Strategy::evaluate` called on each position.
-    fn order(&self, board: &Board) -> impl IntoIterator<Item = Move> {
-        let mut moves: Vec<Move> = board
-            .legal_moves(board.to_move())
-            .map(|(_, action)| action)
-            .collect();
-
-        moves.sort_by_key(|m| {
-            // score captures higher than quiet moves
-            match board.occupants()[m.stop().as_index()] {
-                Some(piece) => -(self.value(piece.kind)), // negative for descending order
-                None => 0,
-            }
-        });
-
-        moves
-    }
-
     /// Prescribes a numerical value for each piece.
     fn value(&self, piece: PieceKind) -> isize {
         PIECE_VALUES[piece as usize]

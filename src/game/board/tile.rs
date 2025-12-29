@@ -169,6 +169,7 @@ impl<T> IndexMut<Tile> for [T] {
 }
 
 /// Tile iterator over a bitset
+#[derive(Copy, Clone, Debug)]
 pub struct Tiles {
     value: i64,
 }

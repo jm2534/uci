@@ -6,9 +6,9 @@ use crate::game::board::Board;
 use crate::game::moves::Move;
 
 #[derive(Eq, PartialEq)]
-struct ScoredMove {
-    score: isize,
-    attempt: Option<Move>,
+pub struct ScoredMove {
+    pub score: isize,
+    pub attempt: Option<Move>,
 }
 
 impl Ord for ScoredMove {
@@ -45,11 +45,23 @@ impl Minimax {
         self.start.elapsed() >= self.limit
     }
 
+    /// By default, lists the  moves available to the current player on the current `board`
+    /// ordered by the results of `Strategy::evaluate` called on each position.
+    pub fn order(&self, board: &mut Board, moves: &mut [Move]) {
+        moves.sort_by_key(|m| {
+            // score captures higher than quiet moves
+            match board.occupants()[m.stop().as_index()] {
+                Some(piece) => -(self.value(piece.kind)), // negative for descending order
+                None => 0,
+            }
+        });
+    }
+
     /// Returns the maximum utility value and associated move for `self.player`
     /// given `board` and the search parameters `alpha` and `beta`.
-    fn maxvalue(
+    pub fn maxvalue(
         &self,
-        board: Board,
+        mut board: Board,
         depth: usize,
         mut alpha: isize,
         beta: isize,
@@ -65,10 +77,14 @@ impl Minimax {
             );
         }
 
+        let mut moves = Vec::new();
+        self.order(&mut board, &mut moves);
+
         let mut best_score = isize::MIN;
         let mut best_move = None;
-        let mut nodes = 0;
-        for action in self.order(&board) {
+        let mut nodes: usize = 0;
+
+        for action in moves {
             let mut child_board = board.clone();
             child_board.try_move(action).unwrap();
 
@@ -104,9 +120,9 @@ impl Minimax {
 
     /// Returns the minimum utility value and associated move for `self.player`
     /// given `board` and the search parameters `alpha` and `beta`.
-    fn minvalue(
+    pub fn minvalue(
         &self,
-        board: Board,
+        mut board: Board,
         depth: usize,
         alpha: isize,
         mut beta: isize,
@@ -122,10 +138,14 @@ impl Minimax {
             );
         }
 
+        let mut moves = Vec::new();
+        self.order(&mut board, &mut moves);
+
         let mut best_score = isize::MAX;
         let mut best_move = None;
         let mut nodes: usize = 0;
-        for action in self.order(&board) {
+
+        for action in moves {
             let mut child_board = board.clone();
             child_board.try_move(action).unwrap();
 

@@ -22,11 +22,10 @@ mod tests {
     #[test]
     fn test_initial_board_generation() {
         Board::initialize();
-        let board = Board::new();
-        let moves: HashSet<Move> = board
-            .legal_moves(board.to_move())
-            .map(|(_, action)| action)
-            .collect();
+        let mut board = Board::new();
+        let mut move_vec = Vec::new();
+        board.populate_legal_moves(board.to_move(), &mut move_vec);
+        let moves: HashSet<Move> = move_vec.into_iter().collect();
 
         let mut expected_moves = HashSet::new();
         let pawns = board.positions[PieceKind::Pawn] & board.occupancy[board.to_move];

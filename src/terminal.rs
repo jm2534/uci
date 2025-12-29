@@ -137,7 +137,7 @@ impl Game {
                 self.state.move_cursor(direction);
             }
             Action::Select => {
-                match self.state.toggle_selection(&self.engine.board) {
+                match self.state.toggle_selection(&mut self.engine.board) {
                     SelectionResult::Selected => {
                         // Successfully selected a piece - visual feedback already handled by render
                     }
@@ -262,7 +262,7 @@ impl State {
 
     /// Select or deselect piece at cursor position
     #[instrument(level = Level::DEBUG, skip_all, fields(cursor_pos = %self.cursor_pos))]
-    pub fn toggle_selection(&mut self, board: &Board) -> SelectionResult {
+    pub fn toggle_selection(&mut self, board: &mut Board) -> SelectionResult {
         if let Some(selected) = self.selected_pos {
             // If we have a selection, either move or deselect
             if selected == self.cursor_pos {
@@ -295,16 +295,18 @@ impl State {
     }
 
     #[instrument(level = Level::DEBUG, skip_all, fields(cursor_pos = %self.cursor_pos))]
-    fn try_select_piece(&mut self, board: &Board) -> SelectionResult {
+    fn try_select_piece(&mut self, board: &mut Board) -> SelectionResult {
         if let Some(piece) = board.occupant(self.cursor_pos) {
             debug!("Selected piece: {:?}", piece);
             if piece.color == board.to_move() {
                 // Valid piece to select
                 self.selected_pos = Some(self.cursor_pos);
-                self.available_moves = board
-                    .legal_moves_from_tile(board.to_move(), piece.kind, self.cursor_pos)
-                    .map(|(_, m)| m)
-                    .collect();
+                board.populate_legal_moves_from_tile(
+                    board.to_move(),
+                    piece.kind,
+                    self.cursor_pos,
+                    &mut self.available_moves,
+                );
                 SelectionResult::Selected
             } else {
                 SelectionResult::InvalidPiece
