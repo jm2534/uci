@@ -16,7 +16,7 @@ pub trait Strategy {
     /// ordered by the results of `Strategy::evaluate` called on each position.
     fn order(&self, board: &Board) -> impl IntoIterator<Item = Move> {
         let mut moves: Vec<Move> = board
-            .possible_moves(board.to_move())
+            .legal_moves(board.to_move())
             .map(|(_, action)| action)
             .collect();
 

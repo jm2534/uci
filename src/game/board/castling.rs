@@ -3,11 +3,21 @@ use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, N
 use crate::game::Color;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Right {
     BlackQueenSide = 0b0001,
     BlackKingSide = 0b0010,
     WhiteQueenSide = 0b0100,
     WhiteKingSide = 0b1000,
+}
+
+impl Right {
+    pub const ALL: [Right; 4] = [
+        Right::BlackQueenSide,
+        Right::BlackKingSide,
+        Right::WhiteQueenSide,
+        Right::WhiteKingSide,
+    ];
 }
 
 impl From<Right> for char {
@@ -224,13 +234,6 @@ impl Iterator for RightIter {
     type Item = Right;
 
     fn next(&mut self) -> Option<Self::Item> {
-        const LOOKUP: [Right; 4] = [
-            Right::BlackQueenSide,
-            Right::BlackKingSide,
-            Right::WhiteQueenSide,
-            Right::WhiteKingSide,
-        ];
-
         // isolate msb, updating shift and value along the way
         let mut msb = 0;
         while msb == 0 && self.value > 0 {
@@ -242,7 +245,7 @@ impl Iterator for RightIter {
         if msb == 0 {
             None
         } else {
-            Some(LOOKUP[LOOKUP.len() - self.shift])
+            Some(Right::ALL[Right::ALL.len() - self.shift])
         }
     }
 }

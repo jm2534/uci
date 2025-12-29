@@ -15,11 +15,10 @@ impl Board {
     const BLACK_KINGSIDE_PATH: Bitset = Bitset(0xC0); // f8, g8
     const BLACK_QUEENSIDE_PATH: Bitset = Bitset(0x38); // b8, c8, d8
 
-    /// Generate all pseudo-legal moves assuming a king at the given tile.
-    pub fn king_moves(&self, tile: Tile) -> Bitset {
+    /// Generate pseudo-legal moves assuming a king at the given tile, excluding castling moves.
+    pub fn king_moves(&self, color: Color, tile: Tile) -> Bitset {
         // kings can move to any square in their attack pattern not occupied by own pieces
-        (Self::KING_MOVES[tile] & !self.occupancy[self.to_move]) // primary movement pattern
-            | self.castling_moves(tile) // castling
+        Self::KING_MOVES[tile] & !self.occupancy[color]
     }
 
     /// Generate all castling moves assuming a king at the given tile.
@@ -28,8 +27,10 @@ impl Board {
     /// 1. The king and the relevant rook must not have moved previously (encoded in board's castling rights)
     /// 2. the king must not currently be in check
     /// 3. The king must not pass through a square targetable by the other player
-    fn castling_moves(&self, tile: Tile) -> Bitset {
-        let color = self.to_move;
+    ///
+    /// Returns a castling moveset that complies with these requirements without altering
+    /// the board's current castling rights.
+    pub fn castling_moves(&self, color: Color, tile: Tile) -> Bitset {
         let mut moves = Bitset(0);
         if tile != Board::KING_STARTING_POSITIONS[color] {
             return Bitset(0);
@@ -179,7 +180,7 @@ mod generation_tests {
         // king moves on an empty board should return all attack squares
         let board = Board::empty();
         let king_tile = Tile::D4;
-        let moves = board.king_moves(king_tile);
+        let moves = board.king_moves(board.to_move, king_tile);
         let expected = Board::KING_MOVES[king_tile];
         assert_eq!(moves, expected);
     }
@@ -187,6 +188,7 @@ mod generation_tests {
     #[test]
     fn test_king_moves_blocked_by_own_pieces() {
         let mut board = Board::new();
+        Board::initialize();
 
         // kings pawn for white then black
         board.try_move(Move::new(Tile::E2, Tile::E4)).unwrap();
@@ -196,7 +198,10 @@ mod generation_tests {
             Board::KING_MOVES[Tile::E1.as_index()],
             Tile::D1 | Tile::D2 | Tile::E2 | Tile::F2 | Tile::F1
         );
-        assert_eq!(board.king_moves(Tile::E1), Tile::E2.as_bitset());
+        assert_eq!(
+            board.king_moves(board.to_move, Tile::E1),
+            Tile::E2.as_bitset()
+        );
     }
 
     #[test]
@@ -218,7 +223,7 @@ mod generation_tests {
         );
 
         let king_tile = Tile::D4;
-        let moves = board.king_moves(king_tile);
+        let moves = board.king_moves(board.to_move, king_tile);
 
         // king should be able to capture enemy pieces
         let enemy_squares = board.occupancy[Color::Black];
@@ -236,8 +241,11 @@ mod castling_tests {
         let board = Board::try_from(fen).unwrap();
         Board::initialize();
 
-        let king_pos = board.king_of(Color::White);
-        assert_eq!(board.king_moves(king_pos), Tile::G1 | Tile::F1);
+        let king_pos = board.king_of(Color::White).unwrap();
+        assert_eq!(
+            board.castling_moves(board.to_move, king_pos),
+            Tile::G1.as_bitset()
+        );
     }
 
     #[test]
@@ -246,8 +254,11 @@ mod castling_tests {
         let board = Board::try_from(fen).unwrap();
         Board::initialize();
 
-        let king_pos = board.king_of(Color::White);
-        assert_eq!(board.king_moves(king_pos), Tile::C1 | Tile::D1);
+        let king_pos = board.king_of(Color::White).unwrap();
+        assert_eq!(
+            board.castling_moves(board.to_move, king_pos),
+            Tile::C1.as_bitset()
+        );
     }
 
     #[test]
@@ -256,8 +267,8 @@ mod castling_tests {
         let board = Board::try_from(fen).unwrap();
         Board::initialize();
 
-        let king_pos = board.king_of(Color::White);
-        assert_eq!(board.king_moves(king_pos), Bitset::empty());
+        let king_pos = board.king_of(Color::White).unwrap();
+        assert_eq!(board.king_moves(board.to_move, king_pos), Bitset::empty());
     }
 
     #[test]
@@ -266,7 +277,71 @@ mod castling_tests {
         let board = Board::try_from(fen).unwrap();
         Board::initialize();
 
-        let king_pos = board.king_of(Color::White);
-        assert_eq!(board.king_moves(king_pos), Bitset::empty());
+        let king_pos = board.king_of(Color::White).unwrap();
+        assert_eq!(board.king_moves(board.to_move, king_pos), Bitset::empty());
+    }
+
+    #[test]
+    fn test_white_king_side_castle_attacked() {
+        Board::initialize();
+
+        // rook targeting destination
+        let fen = "8/8/8/8/8/8/PPPPPPrP/RNBQK2R w KQkq - 0 1";
+        let board = Board::try_from(fen).unwrap();
+        let king_pos = board.king_of(Color::White).unwrap();
+        assert_eq!(
+            board.castling_moves(board.to_move, king_pos),
+            Bitset::empty()
+        );
+
+        // bishop targeting path
+        let fen = "8/8/8/8/8/8/PPPPPPbP/RNBQK2R w KQkq - 0 1";
+        let board = Board::try_from(fen).unwrap();
+        let king_pos = board.king_of(Color::White).unwrap();
+        assert_eq!(
+            board.castling_moves(board.to_move, king_pos),
+            Bitset::empty()
+        );
+
+        // queen covering both
+        let fen = "8/8/8/8/8/8/PPPPPPqP/RNBQK2R w KQkq - 0 1";
+        let board = Board::try_from(fen).unwrap();
+        let king_pos = board.king_of(Color::White).unwrap();
+        assert_eq!(
+            board.castling_moves(board.to_move, king_pos),
+            Bitset::empty()
+        );
+    }
+
+    #[test]
+    fn test_white_queen_side_castle_attacked() {
+        Board::initialize();
+
+        // rook targeting destination
+        let fen = "8/8/8/8/8/8/PPrPPPPP/R3KQBNR w KQkq - 0 1";
+        let board = Board::try_from(fen).unwrap();
+        let king_pos = board.king_of(Color::White).unwrap();
+        assert_eq!(
+            board.castling_moves(board.to_move, king_pos),
+            Bitset::empty()
+        );
+
+        // bishop targeting path
+        let fen = "8/8/8/8/8/8/PPPPbPPP/R3KQBNR w KQkq - 0 1";
+        let board = Board::try_from(fen).unwrap();
+        let king_pos = board.king_of(Color::White).unwrap();
+        assert_eq!(
+            board.castling_moves(board.to_move, king_pos),
+            Bitset::empty()
+        );
+
+        // queen covering both
+        let fen = "8/8/8/8/8/8/PPqPPPPP/R3KQBNRw KQkq - 0 1";
+        let board = Board::try_from(fen).unwrap();
+        let king_pos = board.king_of(Color::White).unwrap();
+        assert_eq!(
+            board.castling_moves(board.to_move, king_pos),
+            Bitset::empty()
+        );
     }
 }

@@ -294,14 +294,8 @@ impl State {
                 // Valid piece to select
                 self.selected_pos = Some(self.cursor_pos);
                 self.available_moves = board
-                    .moves_from_tile(self.cursor_pos, piece.kind)
-                    .tiles()
-                    .map(|to| Move::new(self.cursor_pos, to))
-                    .filter(|mv| {
-                        board
-                            .possible_moves(board.to_move())
-                            .any(|(_, legal_move)| legal_move == *mv)
-                    })
+                    .legal_moves_from_tile(board.to_move(), piece.kind, self.cursor_pos)
+                    .map(|(_, m)| m)
                     .collect();
                 SelectionResult::Selected(piece)
             } else {
@@ -485,7 +479,19 @@ pub(super) mod render {
 
         current_row += 1;
         stdout.queue(MoveTo(0, current_row))?;
-        stdout.queue(Print(format!("Cursor: {}", state.cursor_pos)))?;
+        let cursor_str = format!("Cursor: {}", state.cursor_pos);
+        let cursor_str_len = cursor_str.len() as u16;
+        stdout.queue(Print(cursor_str))?;
+
+        if let Some(special) = state
+            .available_moves
+            .iter()
+            .find(|m| m.stop() == state.cursor_pos)
+            .and_then(|m| m.special())
+        {
+            stdout.queue(MoveTo(cursor_str_len as u16 + 1, current_row))?;
+            stdout.queue(Print(format!("({})", special.to_string().to_lowercase())))?;
+        }
 
         // win conditions
         if let Some(winner) = board.winner() {

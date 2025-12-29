@@ -1,5 +1,5 @@
 use super::super::{Bitset, Board};
-use crate::game::board::tile::Tile;
+use crate::game::{Color, board::tile::Tile};
 
 impl Board {
     /// Pre-computed knight attack patterns indexed by square.
@@ -7,9 +7,9 @@ impl Board {
     pub(in crate::game::board) const KNIGHT_MOVES: [Bitset; 64] = generate_knight_moves_table();
 
     /// Generate all pseudo-legal moves assuming a knight at the given tile.
-    pub fn knight_moves(&self, tile: Tile) -> Bitset {
+    pub fn knight_moves(&self, color: Color, tile: Tile) -> Bitset {
         // knights can move to any square in their attack pattern not occupied by own pieces
-        Board::KNIGHT_MOVES[tile] & !self.occupancy[self.to_move]
+        Board::KNIGHT_MOVES[tile] & !self.occupancy[color]
     }
 }
 
@@ -104,7 +104,7 @@ mod tests {
         board.to_move = Color::White;
 
         let knight_tile = Tile::D4;
-        let moves = board.knight_moves(knight_tile);
+        let moves = board.knight_moves(board.to_move, knight_tile);
 
         // Should match the attack pattern exactly since no pieces block
         let expected = Board::KNIGHT_MOVES[knight_tile.as_index()];
@@ -118,7 +118,7 @@ mod tests {
         board.occupancy[Color::White] = blocked_squares;
 
         let knight_tile = Tile::D4;
-        let moves = board.knight_moves(knight_tile);
+        let moves = board.knight_moves(board.to_move, knight_tile);
 
         // Knight should not be able to move to squares occupied by own pieces
         assert!((moves & blocked_squares).is_empty());
@@ -135,7 +135,7 @@ mod tests {
         board.occupancy[Color::Black] = enemy_squares;
 
         let knight_tile = Tile::D4;
-        let moves = board.knight_moves(knight_tile);
+        let moves = board.knight_moves(board.to_move, knight_tile);
 
         // Knight should be able to capture enemy pieces
         assert!((moves & enemy_squares) == enemy_squares);

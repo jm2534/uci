@@ -14,10 +14,14 @@ use crate::game::{
         tile::Tiles,
     },
     color::Color,
+    moves::SpecialMove,
     piece::{Piece, PieceKind},
 };
 use bitset::Bitset;
-use std::ops::{Index, IndexMut};
+use std::{
+    iter::Chain,
+    ops::{Index, IndexMut},
+};
 use thiserror::Error;
 
 use super::moves::{Move, MoveKind};
@@ -25,14 +29,17 @@ use tile::Tile;
 
 #[derive(Error, Copy, Clone, PartialEq, Eq, Debug)]
 pub enum IllegalMove {
-    #[error("Move {0} is not in the moveset the target piece")]
-    NotPossible(Move),
+    #[error("Move is not in the moveset for the target piece")]
+    NotPossible,
 
     #[error("Piece {0:?} is not owned by the moving player")]
     UnownedPiece(Piece),
 
     #[error("No piece exists at position {0}")]
     NonexistentPiece(Tile),
+
+    #[error("Move would put the moving player in check")]
+    Check,
 }
 
 /// Piece-specific sets of positions on the board for both players.
@@ -211,7 +218,7 @@ impl Board {
         match depth {
             0 => 1,
             d => {
-                for (_, action) in self.possible_moves(self.to_move) {
+                for (_, action) in self.legal_moves(self.to_move) {
                     let mut board = self.clone();
                     board.try_move(action).unwrap();
                     board.to_move = !board.to_move;
@@ -237,28 +244,81 @@ impl Board {
         self.castling_rights
     }
 
-    /// Returns a bitboard of all valid destination squares for the piece at the given tile.
-    pub fn moves_from_tile(&self, tile: Tile, piece_kind: PieceKind) -> Bitset {
-        match piece_kind {
-            PieceKind::Pawn => self.pawn_moves(tile),
-            PieceKind::Knight => self.knight_moves(tile),
-            PieceKind::Bishop => self.bishop_moves(tile),
-            PieceKind::Rook => self.rook_moves(tile),
-            PieceKind::Queen => self.queen_moves(tile),
-            PieceKind::King => self.king_moves(tile),
+    /// Yields all pseudo-legal moves for the indicated player `by`. Note that it may not be `by`'s turn.
+    fn psuedo_legal_moves<'a>(&'a self, by: Color) -> impl Iterator<Item = (PieceKind, Move)> + 'a {
+        enum_iterator::all().flat_map(move |kind| self.psuedo_legal_moves_by_kind(by, kind))
+    }
+
+    /// Returns all pseudo-legal moves for pieces of type `kind` for the indicated player `by`.
+    /// Note that it may not be `by`'s turn.
+    fn psuedo_legal_moves_by_kind(
+        &self,
+        by: Color,
+        kind: PieceKind,
+    ) -> impl Iterator<Item = (PieceKind, Move)> {
+        (self.positions[kind] & self.occupancy[by])
+            .tiles()
+            .flat_map(move |source| PieceMoves::new(self, by, kind, source).moves())
+    }
+
+    fn pseudo_legal_movesets_from_tile(
+        &self,
+        by: Color,
+        kind: PieceKind,
+        tile: Tile,
+    ) -> impl Iterator<Item = (PieceKind, Move)> {
+        PieceMoves::new(self, by, kind, tile).moves()
+    }
+
+    fn filter_legal_moves(mut self, attempt: Move) -> bool {
+        match self.try_move(attempt) {
+            Ok(_) => true,
+            Err(IllegalMove::Check) => false,
+            Err(e) => panic!("Engine generated invalid pseudo-legal move {attempt}: {e}"),
         }
     }
 
-    /// Yields all pseudo-legal moves for the indicated player `by`. Note that it may not be `by`'s turn.
-    fn psuedo_legal_moves<'a>(&'a self, by: Color) -> impl Iterator<Item = (PieceKind, Move)> + 'a {
-        enum_iterator::all().flat_map(move |kind| {
-            PieceKindMoves {
-                board: self,
-                kind,
-                tiles: (self.positions[kind] & self.occupancy[by]).tiles(),
-            }
-            .flatten()
+    /// Yields all legal moves for the indicated player `by`. Note that it may not be `by`'s turn.
+    pub fn legal_moves<'a>(&'a self, by: Color) -> impl Iterator<Item = (PieceKind, Move)> + 'a {
+        self.psuedo_legal_moves(by).filter(move |&(_, attempt)| {
+            let temp = self.clone();
+            temp.filter_legal_moves(attempt)
         })
+    }
+
+    /// Yields all legal moves for the indicated player `by`. Note that it may not be `by`'s turn.
+    pub fn legal_moves_by_kind<'a>(
+        &'a self,
+        by: Color,
+        kind: PieceKind,
+    ) -> impl Iterator<Item = (PieceKind, Move)> + 'a {
+        self.psuedo_legal_moves_by_kind(by, kind)
+            .filter(move |&(_, attempt)| {
+                let temp = self.clone();
+                println!("attempt {attempt}");
+                temp.filter_legal_moves(attempt)
+            })
+    }
+
+    pub fn legal_moves_from_tile(
+        &self,
+        by: Color,
+        kind: PieceKind,
+        tile: Tile,
+    ) -> impl Iterator<Item = (PieceKind, Move)> {
+        self.pseudo_legal_movesets_from_tile(by, kind, tile)
+            .filter(move |&(_, attempt)| {
+                let temp = self.clone();
+                temp.filter_legal_moves(attempt)
+            })
+    }
+
+    /// Places `piece` at `tile` without checking legality.
+    fn place_unchecked(&mut self, piece: Piece, tile: Tile) {
+        let set = &mut self.positions[piece.kind];
+        *set |= tile;
+        self.occupancy[piece.color] |= tile;
+        self.occupants[tile.as_index()] = Some(piece);
     }
 
     /// Returns whether the indicated tile is attacked by the indicated player.
@@ -316,32 +376,6 @@ impl Board {
         false
     }
 
-    /// Yields all legal moves for the indicated player `by`. Note that it may not be `by`'s turn.
-    pub fn possible_moves<'a>(&'a self, by: Color) -> impl Iterator<Item = (PieceKind, Move)> + 'a {
-        self.psuedo_legal_moves(by).filter(move |&(_, attempt)| {
-            // make move
-            let mut temp = self.clone();
-            temp.try_move(attempt)
-                .expect("Attempted an invalid pseudo-legal move!");
-
-            // after move, is king in check?
-            let king = (temp.positions[PieceKind::King] & temp.occupancy[by])
-                .tiles()
-                .next()
-                .unwrap();
-
-            !temp.is_attacked(king, !by)
-        })
-    }
-
-    /// Places `piece` at `tile` without checking legality.
-    fn place_unchecked(&mut self, piece: Piece, tile: Tile) {
-        let set = &mut self.positions[piece.kind];
-        *set |= tile;
-        self.occupancy[piece.color] |= tile;
-        self.occupants[tile.as_index()] = Some(piece);
-    }
-
     /// Returns `true` if `tile` is occupied, and `false` otherwise.
     pub fn occupied(&self, tile: Tile) -> bool {
         self.occupant(tile).is_some()
@@ -352,50 +386,120 @@ impl Board {
         self.occupants[tile.as_index()]
     }
 
+    /// Manages castling rights based on `piece` having just made the given move (potentially
+    /// with a capture).
+    fn manage_castling_rights(&mut self, piece: Piece, attempt: Move, captured: Option<Piece>) {
+        const ROOK_STARTS: [Bitset; 2] = [
+            Bitset(Tile::A8.as_bitset().0 | Tile::H8.as_bitset().0),
+            Bitset(Tile::A1.as_bitset().0 | Tile::H1.as_bitset().0),
+        ];
+
+        // maps tiles to the rook caslting rights granted with a rook on the tile
+        const ROOK_CASLTING_RIGHTS: [Option<Right>; 64] = generate_rook_castling_rights();
+        const fn generate_rook_castling_rights() -> [Option<Right>; 64] {
+            let mut rights = [None; 64];
+            rights[Tile::A8.as_index()] = Some(Right::BlackQueenSide);
+            rights[Tile::H8.as_index()] = Some(Right::BlackKingSide);
+            rights[Tile::A1.as_index()] = Some(Right::WhiteQueenSide);
+            rights[Tile::H1.as_index()] = Some(Right::WhiteKingSide);
+            rights
+        }
+
+        if piece.kind == PieceKind::King {
+            // any king movement revokes castling rights
+            self.castling_rights.unset_color(piece.color);
+        } else if piece.kind == PieceKind::Rook {
+            // any rook motion from starting position revokes caslting rights on that side
+            ROOK_CASLTING_RIGHTS[attempt.start().as_index()]
+                .inspect(|&right| self.castling_rights.unset(right));
+        } else if let Some(Piece {
+            kind: PieceKind::Rook,
+            color,
+        }) = captured
+            // any rook capture
+            && !(attempt.stop() & ROOK_STARTS[color]).is_empty()
+        {
+            // TODO: remove opponent's rook from caslting rights
+        }
+    }
+
+    fn make_move(&mut self, piece: Piece, start: Tile, stop: Tile) -> Option<Piece> {
+        // pick up piece
+        self.positions[piece.kind] ^= start;
+        self.occupancy[piece.color] ^= start;
+        self.occupants[start.as_index()] = None;
+
+        // capture other
+        let captured = self.occupants[stop].inspect(|c| {
+            self.positions[c.kind] ^= stop;
+            self.occupancy[c.color] ^= stop;
+        });
+
+        // drop piece
+        self.positions[piece.kind] |= stop;
+        self.occupancy[piece.color] |= stop;
+        self.occupants[stop.as_index()] = Some(piece);
+
+        captured
+    }
+
+    fn unmake_move(&mut self, piece: Piece, start: Tile, stop: Tile, captured: Option<Piece>) {
+        // pick up piece
+        self.positions[piece.kind] ^= stop;
+        self.occupancy[piece.color] ^= stop;
+        self.occupants[stop.as_index()] = None;
+
+        // drop piece
+        self.positions[piece.kind] |= start;
+        self.occupancy[piece.color] |= start;
+        self.occupants[start.as_index()] = Some(piece);
+
+        // uncapture other
+        if let Some(captured) = captured {
+            self.positions[captured.kind] |= stop;
+            self.occupancy[captured.color] |= stop;
+            self.occupants[stop.as_index()] = Some(captured);
+        }
+    }
+
     /// Tries to make `attempt` on the given board, returning the kind of move (or error) that occurred.
     pub fn try_move(&mut self, attempt: Move) -> Result<MoveKind, IllegalMove> {
         let start = attempt.start();
         let stop = attempt.stop();
         match self.occupants[start.as_index()] {
-            Some(piece) if piece.color == self.to_move => {
-                // this piece is owned by the moving player, dispatch to the appropriate move function
-                let moveset = match piece.kind {
-                    PieceKind::Pawn => self.pawn_moves(start),
-                    PieceKind::Knight => self.knight_moves(start),
-                    PieceKind::Bishop => self.bishop_moves(start),
-                    PieceKind::Rook => self.rook_moves(start),
-                    PieceKind::Queen => self.rook_moves(start) | self.bishop_moves(start),
-                    PieceKind::King => self.king_moves(start),
-                };
+            Some(
+                piece @ Piece {
+                    color: player,
+                    kind,
+                },
+            ) if player == self.to_move => {
+                // first check that the tile is even in the pseudo-legal moveset
+                if self
+                    .pseudo_legal_movesets_from_tile(player, kind, start)
+                    .find(|&(_, m)| m == attempt)
+                    .is_some()
+                {
+                    // move execution
+                    let captured = self.make_move(piece, start, stop);
 
-                if moveset.contains(stop) {
-                    // pick up piece
-                    self.positions[piece.kind] ^= start;
-                    self.occupancy[piece.color] ^= start;
-                    self.occupants[start.as_index()] = None;
-
-                    // capture other
-                    let captured = self.occupants[stop].inspect(|c| {
-                        self.positions[c.kind] ^= stop;
-                        self.occupancy[c.color] ^= stop;
-                    });
-
-                    // drop piece
-                    self.positions[piece.kind] |= stop;
-                    self.occupancy[piece.color] |= stop;
-                    self.occupants[stop.as_index()] = Some(piece);
-
-                    self.to_move = !self.to_move;
-
-                    if piece.kind == PieceKind::King {
-                        self.castling_rights.unset_color(piece.color);
-                    } else if piece.kind == PieceKind::Rook {
-                        // TODO: handle side-based check constraints
+                    // king must not be left in check
+                    if let Some(king) = self.king_of(piece.color)
+                        && self.is_attacked(king, !player)
+                    {
+                        self.unmake_move(piece, start, stop, captured);
+                        return Err(IllegalMove::Check);
+                    } else if let Some(SpecialMove::Castle) = attempt.special() {
+                        // move rook for castle
                     }
 
-                    Ok(captured.map(MoveKind::Capture).unwrap_or(MoveKind::Quiet))
+                    self.to_move = !self.to_move;
+                    self.manage_castling_rights(piece, attempt, captured);
+
+                    Ok(captured
+                        .map(|p| MoveKind::Capture(p.kind))
+                        .unwrap_or(MoveKind::Quiet))
                 } else {
-                    Err(IllegalMove::NotPossible(attempt))
+                    Err(IllegalMove::NotPossible)
                 }
             }
             Some(piece) => Err(IllegalMove::UnownedPiece(piece)),
@@ -403,23 +507,19 @@ impl Board {
         }
     }
 
-    pub fn unmake_move(&mut self) {
-        // TODO: implement unmake_move
-    }
-
-    fn king_of(&self, color: Color) -> Tile {
+    fn king_of(&self, color: Color) -> Option<Tile> {
         (self.positions[PieceKind::King] & self.occupancy[color])
             .tiles()
             .next()
-            .unwrap()
     }
 
     /// Returns the player in check, if any.
     pub fn in_check(&self) -> Option<Color> {
         for color in enum_iterator::all::<Color>() {
-            let king = self.king_of(color);
-            if self.is_attacked(king, !color) {
-                return Some(color);
+            if let Some(tile) = self.king_of(color) {
+                if self.is_attacked(tile, !color) {
+                    return Some(color);
+                }
             }
         }
         None
@@ -428,14 +528,14 @@ impl Board {
     /// Returns the winner of the current board, if any. Useful for checking
     /// if a game has ended.
     pub fn winner(&self) -> Option<Color> {
-        let king = self.king_of(self.to_move);
-        if self.is_attacked(king, !self.to_move)
-            && self.possible_moves(self.to_move).next().is_none()
-        {
-            Some(!self.to_move)
-        } else {
-            None
+        if let Some(king) = self.king_of(self.to_move) {
+            if self.is_attacked(king, !self.to_move)
+                && self.legal_moves(self.to_move).next().is_none()
+            {
+                return Some(!self.to_move);
+            }
         }
+        None
     }
 
     /// The FEN-string representation of the current board.
@@ -541,40 +641,68 @@ impl TryFrom<&str> for Board {
     }
 }
 
-/// Iterator over all moves of a given piece kind on a board, used internally by boards when yielding moves.
-struct PieceKindMoves<'a, T: Iterator<Item = Tile>> {
-    board: &'a Board,
+/// Naive appending of castling flag to all moves. Yields None immediately on non-king piece `kinds`
+struct CastlingMoves {
+    tiles: Tiles,
     kind: PieceKind,
-    tiles: T,
+    source: Tile,
 }
 
-impl<'a, T: Iterator<Item = Tile>> Iterator for PieceKindMoves<'a, T> {
-    type Item = PieceMoves;
+impl Iterator for CastlingMoves {
+    type Item = (PieceKind, Move);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.tiles.next().map(|tile| PieceMoves {
-            source: tile,
-            kind: self.kind,
-            moves: self.board.moves_from_tile(tile, self.kind).tiles(),
+        if self.kind != PieceKind::King {
+            return None;
+        }
+
+        self.tiles.next().map(|tile| {
+            let attempt = Move::new(self.source, tile) | SpecialMove::Castle;
+            (self.kind, attempt)
         })
     }
 }
 
 /// An interator over the moves of a given piece on a board, used internally by boards when yielding moves.
 struct PieceMoves {
-    moves: Tiles,
     kind: PieceKind,
-    source: Tile,
+    tile: Tile,
+    color: Color,
+    moveset: Tiles,
+    castling_moves: Tiles,
 }
 
-impl Iterator for PieceMoves {
-    type Item = (PieceKind, Move);
+impl PieceMoves {
+    fn new(board: &Board, color: Color, kind: PieceKind, tile: Tile) -> Self {
+        let bitset = match kind {
+            PieceKind::Pawn => board.pawn_moves(tile),
+            PieceKind::Knight => board.knight_moves(color, tile),
+            PieceKind::Bishop => board.bishop_moves(color, tile),
+            PieceKind::Rook => board.rook_moves(color, tile),
+            PieceKind::Queen => board.queen_moves(color, tile),
+            PieceKind::King => board.king_moves(color, tile),
+        };
+        let moveset = bitset.tiles();
+        let castling_moves = board.castling_moves(color, tile).tiles();
+        Self {
+            kind,
+            tile,
+            color,
+            moveset,
+            castling_moves,
+        }
+    }
+}
 
-    fn next(&mut self) -> Option<Self::Item> {
-        // TODO: handle psuedo-legality of current moves
-        self.moves
-            .next()
-            .map(|tile| (self.kind, Move::new(self.source, tile)))
+impl PieceMoves {
+    pub fn moves(self) -> impl Iterator<Item = (PieceKind, Move)> {
+        self.moveset
+            .map(move |tile| (self.kind, Move::new(self.tile, tile)))
+            .chain(CastlingMoves {
+                kind: self.kind,
+                source: self.tile,
+                tiles: self.castling_moves,
+            })
     }
 }
 
@@ -583,6 +711,7 @@ mod board_tests {
     use super::Board;
     use crate::game::Move;
     use crate::game::color::Color;
+    use crate::game::moves::SpecialMove;
     use crate::{
         game::board::{
             Tile,
@@ -675,6 +804,7 @@ mod board_tests {
     #[test]
     fn test_try_move() {
         let mut board = Board::new();
+        Board::initialize();
 
         // kings pawn for white then black
         let attempt = Move::new(Tile::E2, Tile::E4);
@@ -697,5 +827,31 @@ mod board_tests {
                 color: Color::White
             })
         );
+    }
+
+    #[test]
+    fn test_white_queen_side_castling() {
+        let fen = "8/8/8/8/8/8/PPPPPPPP/R3KBNR w KQkq - 0 1";
+        let board = Board::try_from(fen).unwrap();
+        Board::initialize();
+
+        let king_pos = board.king_of(Color::White).unwrap();
+        assert_eq!(king_pos, Tile::E1);
+        let expected = HashSet::from([
+            Move::new(king_pos, Tile::D1),
+            Move::new(king_pos, Tile::C1) | SpecialMove::Castle,
+        ]);
+
+        let actual = board
+            .legal_moves_by_kind(Color::White, PieceKind::King)
+            .map(|(_, m)| m)
+            .collect::<HashSet<Move>>();
+        assert_eq!(actual, expected);
+
+        let actual = board
+            .legal_moves(Color::White)
+            .filter_map(|(k, m)| if k == PieceKind::King { Some(m) } else { None })
+            .collect::<HashSet<Move>>();
+        assert_eq!(actual, expected);
     }
 }

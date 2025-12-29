@@ -1,4 +1,4 @@
-use std::{env, io};
+use std::{env, io, thread};
 mod terminal;
 use uci::{engine::Engine, game::board::Board};
 
@@ -42,18 +42,25 @@ fn main() -> io::Result<()> {
 
     // main thread handles user input and renders, spawned threads run engine
     // TODO: CPU moves via engine.step()
-    while !game.finished() {
-        game.draw()?;
-        let action;
-        loop {
-            if let Ok(result) = crossterm::event::read()?.try_into() {
-                action = result;
-                break;
+    let handle = thread::spawn(move || {
+        while !game.finished() {
+            game.draw().expect("Failed to draw game!");
+            let action;
+            loop {
+                if let Ok(result) = crossterm::event::read()
+                    .expect("Failed to read command!")
+                    .try_into()
+                {
+                    action = result;
+                    break;
+                }
             }
+            game.handle(action);
         }
-        game.handle(action);
-    }
-    game.draw()?;
+        game.draw().expect("Failed to draw game!");
+    });
+
+    handle.join().unwrap_or(());
     terminal::cleanup_terminal()?;
     println!("\nGame finished!");
     Ok(())

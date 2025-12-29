@@ -24,7 +24,7 @@ mod tests {
         Board::initialize();
         let board = Board::new();
         let moves: HashSet<Move> = board
-            .possible_moves(board.to_move())
+            .legal_moves(board.to_move())
             .map(|(_, action)| action)
             .collect();
 
