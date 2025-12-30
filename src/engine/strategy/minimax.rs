@@ -217,3 +217,18 @@ impl Strategy for Minimax {
         best_move.expect("No valid move found")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_minimax() {
+        let mut board =
+            Board::try_from("r1b1kQnr/p1p2p2/4p3/8/4P3/5N2/1PPP1PPP/qNB1K2R b Kkq - 0 1").unwrap();
+        Board::initialize();
+
+        let mut strategy = Minimax::default();
+        strategy.step(&mut board);
+    }
+}

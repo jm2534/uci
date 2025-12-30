@@ -2,7 +2,7 @@ use crate::game::board::{Board, bitset::Bitset};
 use paste::paste;
 use std::{
     fmt::Display,
-    ops::{BitAnd, BitOr, BitXor, Index, IndexMut},
+    ops::{BitAnd, BitOr, BitXor, Index, IndexMut, Not},
 };
 use thiserror::Error;
 
@@ -137,6 +137,14 @@ impl Display for Tile {
             char::from_u32((self.file() as u32) + ('a' as u32)).unwrap(),
             self.rank() + 1 // zero -> one indexing
         )
+    }
+}
+
+impl Not for Tile {
+    type Output = Bitset;
+
+    fn not(self) -> Self::Output {
+        !self.0
     }
 }
 

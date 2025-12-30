@@ -41,32 +41,36 @@ impl Board {
         if color == Color::Black && !self.is_attacked(tile, Color::White) {
             if rights.has(Right::BlackQueenSide)
                 && (Board::BLACK_QUEENSIDE_PATH & all_occupancy).is_empty()
-                && !self.is_attacked(Tile::D8, Color::White)
-                && !self.is_attacked(Tile::E8, Color::White)
+                && !(Board::BLACK_QUEENSIDE_PATH
+                    .tiles()
+                    .any(|t| self.is_attacked(t, Color::White)))
             {
                 moves |= Tile::C8;
             }
 
             if rights.has(Right::BlackKingSide)
                 && (Board::BLACK_KINGSIDE_PATH & all_occupancy).is_empty()
-                && !self.is_attacked(Tile::F8, Color::White)
-                && !self.is_attacked(Tile::G8, Color::White)
+                && !(Board::BLACK_KINGSIDE_PATH
+                    .tiles()
+                    .any(|t| self.is_attacked(t, Color::White)))
             {
                 moves |= Tile::G8;
             }
-        } else if !self.is_attacked(tile, Color::Black) {
+        } else if color == Color::White && !self.is_attacked(tile, Color::Black) {
             if rights.has(Right::WhiteQueenSide)
                 && (Board::WHITE_QUEENSIDE_PATH & all_occupancy).is_empty()
-                && !self.is_attacked(Tile::C1, Color::Black)
-                && !self.is_attacked(Tile::D1, Color::Black)
+                && !(Board::WHITE_QUEENSIDE_PATH
+                    .tiles()
+                    .any(|t| self.is_attacked(t, Color::Black)))
             {
                 moves |= Tile::C1;
             }
 
             if rights.has(Right::WhiteKingSide)
                 && (Board::WHITE_KINGSIDE_PATH & all_occupancy).is_empty()
-                && !self.is_attacked(Tile::F1, Color::Black)
-                && !self.is_attacked(Tile::G1, Color::Black)
+                && !(Board::WHITE_KINGSIDE_PATH
+                    .tiles()
+                    .any(|t| self.is_attacked(t, Color::Black)))
             {
                 moves |= Tile::G1;
             }

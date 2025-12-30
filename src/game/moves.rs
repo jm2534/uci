@@ -62,10 +62,10 @@ impl Display for SpecialMove {
 /// Stockfish definition of a move:
 /// A move needs 16 bits to be stored
 ///
-/// bit  0-5: destination square (from 0 to 63)
-/// bit  6-11: origin square (from 0 to 63)
-/// bit 12-13: promotion piece type - 2 (from KNIGHT-2 to QUEEN-2)
-/// bit 14-15: special move flag: promotion (1), en passant (2), castling (3)
+/// bit  0..=5: destination square (from 0 to 63)
+/// bit  6..=11: origin square (from 0 to 63)
+/// bit 12..=13: promotion piece type - 2 (from KNIGHT-2 to QUEEN-2)
+/// bit 14..=15: special move flag: promotion (1), en passant (2), castling (3)
 /// NOTE: EN-PASSANT bit is set only when a pawn can be captured
 #[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Move(u16);
@@ -91,13 +91,20 @@ impl Move {
     pub fn special(&self) -> Option<SpecialMove> {
         let value = (self.0 >> 14) as u8;
 
+        match value {
+            1 => Some(SpecialMove::Promotion),
+            2 => Some(SpecialMove::EnPassant),
+            3 => Some(SpecialMove::Castle),
+            _ => None,
+        }
+
         // Safety: Self is typed to have a u16, so there will only ever be 4 values
         // after shifting by 14, one being 0 and the other 3 being valid SpecialMoves
-        if value == 0 {
-            None
-        } else {
-            Some(unsafe { std::mem::transmute::<u8, SpecialMove>(value) })
-        }
+        // if value == 0 {
+        //     None
+        // } else {
+        //     Some(unsafe { std::mem::transmute::<u8, SpecialMove>(value) })
+        // }
     }
 }
 

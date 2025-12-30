@@ -24,6 +24,109 @@ use thiserror::Error;
 use super::moves::{Move, MoveKind};
 use tile::Tile;
 
+macro_rules! assert_board_consistent {
+    ($board:expr, $context:expr) => {
+        // 1. moves and undo_stack synchronized
+        assert_eq!(
+            $board.moves.len(),
+            $board.undo_stack.len(),
+            "Context: {}. Moves len {} != undo_stack len {}",
+            $context, $board.moves.len(), $board.undo_stack.len()
+        );
+
+        // 2. occupants array matches occupancy bitboards with correct kinds and colors
+        for (index, element) in $board.occupants.iter().enumerate() {
+            if let Some(occupant) = element {
+                let tile = Tile::from_index(index);
+
+                // check  color
+                assert!(
+                    $board.occupancy[occupant.color].contains(tile),
+                    "Context: {}. Occupancy did not contain occupants on tile {} for color {:?}",
+                    $context,
+                    tile,
+                    occupant.color
+                );
+
+                // check kind
+                assert!(
+                    $board.positions[occupant.kind].contains(tile),
+                    "Context: {}. No position found on tile {} despite occupant {:?}",
+                    $context,
+                    tile,
+                    occupant
+                );
+            }
+        }
+
+        // 3. every occupancy bit corresponds to an occupant, corroborated by `positions`
+        for color in [Color::White, Color::Black] {
+            let occupancy = $board.occupancy[color];
+            for tile in occupancy.tiles() {
+                // check existence of occupant
+                if let Some(occupant) = $board.occupants[tile] {
+                    // sanity check color of piece
+                    assert_eq!(
+                        occupant.color,
+                        color,
+                        "Context: {}. Occupant expected to be of color {} but found {:?} on tile {}",
+                        $context,
+                        color,
+                        occupant,
+                        tile
+                    );
+
+                    // primary check of positions correspondance
+                    assert!(
+                        $board.positions[occupant.kind].contains(tile),
+                        "Context: {}. Occupant at {} expected to be {:?} but was {:?}",
+                        $context,
+                        tile,
+                        Piece { color, kind: occupant.kind },
+                        occupant,
+                    );
+                } else {
+                    panic!("Context: {}. Occupant missing for tile {}", $context, tile);
+                }
+            }
+        }
+
+        // 4. every position bit corresponds to an occupant of the correct color and type
+        for kind in enum_iterator::all::<PieceKind>() {
+            let positions = $board.positions[kind];
+            for tile in positions.tiles() {
+                if let Some(occupant) = $board.occupants[tile] {
+                    // check kind
+                    assert!(
+                        occupant.kind == kind,
+                        "Context: {}. Positions implied {} on tile {}, but occupant was found to be {:?}",
+                        $context,
+                        kind,
+                        tile,
+                        occupant
+                    );
+
+                    // check color
+                    assert!(
+                        $board.occupancy[occupant.color].contains(tile),
+                        "Context: {}. Occupancy for piece {:?} on tile {} was expected but not found",
+                        $context,
+                        occupant,
+                        tile
+                    );
+                } else {
+                    panic!(
+                        "Context: {}. Occupant of type {} missing for tile {} when implied by positions",
+                        $context,
+                        kind,
+                        tile
+                    );
+                }
+            }
+        }
+    };
+}
+
 #[derive(Error, Copy, Clone, PartialEq, Eq, Debug)]
 pub enum IllegalMove {
     #[error("Move is not in the moveset for the target piece")]
@@ -471,6 +574,9 @@ impl Board {
     }
 
     pub fn make_move(&mut self, attempt: Move) -> Result<MoveKind, IllegalMove> {
+        #[cfg(debug_assertions)]
+        assert_board_consistent!(self, "make_move start");
+
         // piece being moved
         let start = attempt.start();
         let stop = attempt.stop();
@@ -480,12 +586,13 @@ impl Board {
             None => Err(IllegalMove::NonexistentPiece(start)),
         }?;
 
-        // check specials
-        match (attempt.special(), piece.kind) {
-            (Some(SpecialMove::Castle), kind) if kind != PieceKind::King => {
-                Err(IllegalMove::NotPossible)
-            }
-            _ => Ok(()),
+        // check moveset
+        match self
+            .pseudo_legal_movesets_from_tile(self.to_move, piece.kind, start)
+            .find(|&(_, m)| m == attempt)
+        {
+            Some((_, _)) => Ok(()),
+            None => Err(IllegalMove::NotPossible),
         }?;
 
         // save state
@@ -497,14 +604,22 @@ impl Board {
         };
 
         // 1. pick up piece
-        self.positions[piece.kind] ^= start;
-        self.occupancy[piece.color] ^= start;
+        self.positions[piece.kind] &= !start;
+        self.occupancy[piece.color] &= !start;
         self.occupants[start] = None;
+
+        #[cfg(debug_assertions)]
+        assert_board_consistent!(self, "make_move after piece pickup");
 
         // 2. capture at destination (if any)
         undo.captured = self.occupants[stop].inspect(|c| {
-            self.positions[c.kind] ^= stop;
-            self.occupancy[c.color] ^= stop;
+            tracing::trace!(?c, ?stop, "Capturing piece");
+            self.positions[c.kind] &= !stop;
+            self.occupancy[c.color] &= !stop;
+            self.occupants[stop] = None;
+
+            #[cfg(debug_assertions)]
+            assert_board_consistent!(self, "make_move after piece capture");
         });
 
         // 3. drop piece at destination
@@ -512,29 +627,74 @@ impl Board {
         self.occupancy[piece.color] |= stop;
         self.occupants[stop] = Some(piece);
 
+        #[cfg(debug_assertions)]
+        assert_board_consistent!(self, "make_move after piece placement");
+
         // postprocessing: handle castle
         if let Some(SpecialMove::Castle) = attempt.special() {
-            let rank = start.rank();
+            let start_rank = start.rank();
+            let stop_rank = stop.rank();
+
+            debug_assert!(
+                (start_rank == Board::MIN_DIM || start_rank == Board::MAX_DIM - 1)
+                    && stop_rank == start_rank
+            );
+            debug_assert_eq!(
+                piece,
+                Piece {
+                    kind: PieceKind::King,
+                    color: self.to_move
+                }
+            );
+
+            // println!(
+            //     "to-move {} piece {:?} move {} moveset {}",
+            //     self.to_move,
+            //     piece,
+            //     attempt,
+            //     self.pseudo_legal_movesets_from_tile(piece.color, piece.kind, attempt.start())
+            //         .map(|(_, m)| m.to_string())
+            //         .collect::<Vec<String>>()
+            //         .join(", ")
+            // );
+
             let (rook_start, rook_stop) = if stop.file() == 6 {
-                // Kingside
-                (Tile::new(rank, 7), Tile::new(rank, 5))
+                // kingside
+                (Tile::new(start_rank, 7), Tile::new(start_rank, 5))
             } else {
                 // queenside
-                (Tile::new(rank, 0), Tile::new(rank, 3))
+                (Tile::new(start_rank, 0), Tile::new(start_rank, 3))
             };
 
             undo.castled_rook = Some((rook_start, rook_stop));
 
             // actually move the rook
-            self.positions[PieceKind::Rook] ^= rook_start;
+            debug_assert!(self.occupancy[self.to_move].contains(rook_start));
+            debug_assert!(
+                !(self.occupancy[self.to_move] & !self.occupancy[!self.to_move])
+                    .contains(rook_stop)
+            );
+            debug_assert_eq!(
+                self.occupants[rook_start],
+                Some(Piece {
+                    color: self.to_move,
+                    kind: PieceKind::Rook,
+                })
+            );
+            debug_assert_eq!(self.occupants[rook_stop], None);
+
+            self.positions[PieceKind::Rook] &= !rook_start;
             self.positions[PieceKind::Rook] |= rook_stop;
-            self.occupancy[piece.color] ^= rook_start;
+            self.occupancy[piece.color] &= !rook_start;
             self.occupancy[piece.color] |= rook_stop;
-            self.occupants[rook_start.as_index()] = None;
-            self.occupants[rook_stop.as_index()] = Some(Piece {
+            self.occupants[rook_start] = None;
+            self.occupants[rook_stop] = Some(Piece {
                 color: piece.color,
                 kind: PieceKind::Rook,
             });
+
+            #[cfg(debug_assertions)]
+            assert_board_consistent!(self, "make_move after castle");
         }
 
         // final postprocessing
@@ -551,9 +711,9 @@ impl Board {
 
             // un-castle rook if needed
             if let Some((rook_start, rook_stop)) = undo.castled_rook {
-                self.positions[PieceKind::Rook] ^= rook_stop;
+                self.positions[PieceKind::Rook] &= !rook_stop;
                 self.positions[PieceKind::Rook] |= rook_start;
-                self.occupancy[piece.color] ^= rook_stop;
+                self.occupancy[piece.color] &= !rook_stop;
                 self.occupancy[piece.color] |= rook_start;
                 self.occupants[rook_stop] = None;
                 self.occupants[rook_start] = Some(Piece {
@@ -562,21 +722,33 @@ impl Board {
                 });
             }
 
+            #[cfg(debug_assertions)]
+            assert_board_consistent!(self, "make_move after undo castle");
+
             // reverse piece movement
-            self.positions[piece.kind] ^= stop;
-            self.occupancy[piece.color] ^= stop;
-            self.occupants[stop.as_index()] = None;
+            self.positions[piece.kind] &= !stop;
+            self.occupancy[piece.color] &= !stop;
+            self.occupants[stop] = None;
+
+            #[cfg(debug_assertions)]
+            assert_board_consistent!(self, "make_move after undo piece placement");
 
             self.positions[piece.kind] |= start;
             self.occupancy[piece.color] |= start;
-            self.occupants[start.as_index()] = Some(piece);
+            self.occupants[start] = Some(piece);
+
+            #[cfg(debug_assertions)]
+            assert_board_consistent!(self, "make_move after undo piece pickup");
 
             // restore captured piece
             if let Some(captured) = undo.captured {
                 self.positions[captured.kind] |= stop;
                 self.occupancy[captured.color] |= stop;
-                self.occupants[stop.as_index()] = Some(captured);
+                self.occupants[stop] = Some(captured);
             }
+
+            #[cfg(debug_assertions)]
+            assert_board_consistent!(self, "make_move after undo capture");
 
             return Err(IllegalMove::Check);
         }
@@ -590,10 +762,17 @@ impl Board {
         self.moves.push(attempt);
         self.undo_stack.push(undo);
 
+        #[cfg(debug_assertions)]
+        assert_board_consistent!(self, "make_move end on legal move");
+
         Ok(move_kind)
     }
 
+    #[tracing::instrument(skip(self), fields(fen = %self.fen(), stack_len = self.undo_stack.len()))]
     pub fn unmake_move(&mut self) {
+        #[cfg(debug_assertions)]
+        assert_board_consistent!(self, "unmake_move start");
+
         let undo = self
             .undo_stack
             .pop()
@@ -602,6 +781,7 @@ impl Board {
         let attempt = undo.move_made;
         let start = attempt.start();
         let stop = attempt.stop();
+        tracing::trace!(?attempt, ?start, ?stop, ?undo.captured, "Unmaking move");
 
         // get the piece that was moved (it's at stop now)
         let piece = self.occupants[stop].unwrap_or_else(|| {
@@ -632,40 +812,54 @@ impl Board {
 
         // other state
         self.to_move = !self.to_move;
+        self.moves.pop();
         self.castling_rights = undo.castling_rights;
 
         // un-castle rook if this was a castling move
         if let Some((rook_start, rook_stop)) = undo.castled_rook {
-            self.positions[PieceKind::Rook] ^= rook_stop;
+            self.positions[PieceKind::Rook] &= !rook_stop;
             self.positions[PieceKind::Rook] |= rook_start;
-            self.occupancy[piece.color] ^= rook_stop;
+            self.occupancy[piece.color] &= !rook_stop;
             self.occupancy[piece.color] |= rook_start;
             self.occupants[rook_stop] = None;
             self.occupants[rook_start] = Some(Piece {
                 color: piece.color,
                 kind: PieceKind::Rook,
             });
+
+            #[cfg(debug_assertions)]
+            assert_board_consistent!(self, "unmake_move after undo castle");
         }
 
-        // Pick up piece from stop
-        self.positions[piece.kind] ^= stop;
-        self.occupancy[piece.color] ^= stop;
+        // pick up piece from stop
+        self.positions[piece.kind] &= !stop;
+        self.occupancy[piece.color] &= !stop;
         self.occupants[stop] = None;
+
+        #[cfg(debug_assertions)]
+        assert_board_consistent!(self, "unmake_move after undo place piece");
 
         // Drop piece at start
         self.positions[piece.kind] |= start;
         self.occupancy[piece.color] |= start;
         self.occupants[start] = Some(piece);
 
+        #[cfg(debug_assertions)]
+        assert_board_consistent!(self, "unmake_move after undo pick up piece");
+
         // Restore captured piece (if any)
         if let Some(captured) = undo.captured {
+            tracing::trace!(?captured, ?stop, "Restoring captured piece");
             self.positions[captured.kind] |= stop;
             self.occupancy[captured.color] |= stop;
             self.occupants[stop] = Some(captured);
+
+            #[cfg(debug_assertions)]
+            assert_board_consistent!(self, "unmake_move after undo capture");
         }
 
-        // Remove from moves vector (to keep it in sync)
-        self.moves.pop();
+        #[cfg(debug_assertions)]
+        assert_board_consistent!(self, "unmake_move end");
     }
 
     fn king_of(&self, color: Color) -> Option<Tile> {
@@ -1115,5 +1309,113 @@ mod board_tests {
                 color: Color::White
             })
         );
+    }
+
+    #[test]
+    fn test_king_attacked_moveset() {
+        // must dodge or take
+        let mut board = Board::try_from("rkb1kQnr/ppp2ppp/8/8/8/8/8/8 b Kkq - 0 1").unwrap();
+        Board::initialize();
+
+        assert!(board.is_attacked(Tile::E8, Color::White));
+
+        let pseudo_legal_moves = board
+            .pseudo_legal_movesets_from_tile(Color::Black, PieceKind::King, Tile::E8)
+            .map(|(k, m)| {
+                assert_eq!(k, PieceKind::King);
+                m
+            })
+            .collect::<HashSet<_>>();
+
+        let expected = HashSet::from_iter([
+            Move::new(Tile::E8, Tile::D8),
+            Move::new(Tile::E8, Tile::F8),
+            Move::new(Tile::E8, Tile::E7),
+            Move::new(Tile::E8, Tile::D7),
+        ]);
+        assert_eq!(pseudo_legal_moves, expected);
+
+        let legal_moves = pseudo_legal_moves
+            .into_iter()
+            .filter_map(|m| {
+                println!("Checking move: {}", m);
+                if board.filter_legal_moves(m) {
+                    Some(m.stop())
+                } else {
+                    None
+                }
+            })
+            .collect::<Bitset>();
+
+        // take or dodge
+        assert_eq!(legal_moves, Tile::F8 | Tile::D7)
+    }
+}
+
+#[cfg(test)]
+mod consistency_tests {
+    use super::*;
+
+    #[test]
+    fn test_consistency_startpos() {
+        let board = Board::new();
+        assert_board_consistent!(board, "startpos");
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Context: positions. Positions implied Pawn on tile a1, but occupant was found to be Piece { kind: Rook, color: White }"
+    )]
+    fn test_consistency_positions_added() {
+        let mut board = Board::new();
+        board.positions[PieceKind::Pawn].toggle(Tile::A1);
+        assert_board_consistent!(board, "positions");
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "No position found on tile a1 despite occupant Piece { kind: Rook, color: White }"
+    )]
+    fn test_consistency_positions_removed() {
+        let mut board = Board::new();
+        board.positions[PieceKind::Rook].toggle(Tile::A1);
+        assert_board_consistent!(board, "positions");
+    }
+
+    #[test]
+    #[should_panic(expected = "Occupancy did not contain occupants on tile d4 for color White")]
+    fn test_consistency_occupants_added() {
+        let mut board = Board::new();
+        board.occupants[Tile::D4] = Some(Piece {
+            kind: PieceKind::Pawn,
+            color: Color::White,
+        });
+        assert_board_consistent!(board, "occupants");
+    }
+
+    #[test]
+    #[should_panic(expected = "Context: occupants. Occupant missing for tile a1")]
+    fn test_consistency_occupants_removed() {
+        let mut board = Board::new();
+        board.occupants[Tile::A1] = None;
+        assert_board_consistent!(board, "occupants");
+    }
+
+    #[test]
+    #[should_panic(expected = "Context: occupants. Occupant missing for tile d4")]
+    fn test_occupancy_added() {
+        let mut board = Board::new();
+        board.occupancy[Color::White].toggle(Tile::D4);
+        assert_board_consistent!(board, "occupants");
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Context: occupants. Occupancy did not contain occupants on tile a1 for color White"
+    )]
+    fn test_occupancy_removed() {
+        let mut board = Board::new();
+        board.occupancy[Color::White].toggle(Tile::A1);
+        assert_board_consistent!(board, "occupants");
     }
 }
