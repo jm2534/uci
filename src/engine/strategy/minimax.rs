@@ -27,6 +27,7 @@ impl PartialOrd for ScoredMove {
 pub struct Minimax {
     start: Instant,
     limit: Duration,
+    max_depth: usize,
 }
 
 impl Default for Minimax {
@@ -34,15 +35,21 @@ impl Default for Minimax {
         Self {
             start: Instant::now(),
             limit: Duration::from_secs(5),
+            max_depth: Self::DEFAULT_MAX_DEPTH,
         }
     }
 }
 
 impl Minimax {
-    const MAX_DEPTH: usize = 20;
+    const DEFAULT_MAX_DEPTH: usize = if cfg!(debug_assertions) { 5 } else { 20 };
 
     fn should_stop(&self) -> bool {
-        self.start.elapsed() >= self.limit
+        // only in release builds
+        if cfg!(debug_assertions) {
+            false
+        } else {
+            self.start.elapsed() >= self.limit
+        }
     }
 
     /// By default, lists the  moves available to the current player on the current `board`
@@ -61,7 +68,7 @@ impl Minimax {
     /// given `board` and the search parameters `alpha` and `beta`.
     pub fn maxvalue(
         &self,
-        mut board: Board,
+        board: &mut Board,
         depth: usize,
         mut alpha: isize,
         beta: isize,
@@ -70,7 +77,7 @@ impl Minimax {
         if board.winner().is_some() || depth == 0 || self.should_stop() {
             return (
                 ScoredMove {
-                    score: self.evaluate(&board),
+                    score: self.evaluate(board),
                     attempt: None,
                 },
                 1,
@@ -78,18 +85,19 @@ impl Minimax {
         }
 
         let mut moves = Vec::new();
-        self.order(&mut board, &mut moves);
+        board.populate_legal_moves(Color::White, &mut moves);
+        self.order(board, &mut moves);
 
         let mut best_score = isize::MIN;
         let mut best_move = None;
         let mut nodes: usize = 0;
 
         for action in moves {
-            let mut child_board = board.clone();
-            child_board.try_move(action).unwrap();
+            board.make_move(action).expect("Search make illegal move");
+            let (child_result, nodes_explored) = self.minvalue(board, depth - 1, alpha, beta);
+            board.unmake_move();
 
             // Get the score from opponent's perspective
-            let (child_result, nodes_explored) = self.minvalue(child_board, depth - 1, alpha, beta);
             nodes += nodes_explored;
 
             if child_result.score > best_score {
@@ -122,7 +130,7 @@ impl Minimax {
     /// given `board` and the search parameters `alpha` and `beta`.
     pub fn minvalue(
         &self,
-        mut board: Board,
+        board: &mut Board,
         depth: usize,
         alpha: isize,
         mut beta: isize,
@@ -131,7 +139,7 @@ impl Minimax {
         if board.winner().is_some() || depth == 0 || self.should_stop() {
             return (
                 ScoredMove {
-                    score: self.evaluate(&board),
+                    score: self.evaluate(board),
                     attempt: None,
                 },
                 1,
@@ -139,22 +147,23 @@ impl Minimax {
         }
 
         let mut moves = Vec::new();
-        self.order(&mut board, &mut moves);
+        board.populate_legal_moves(Color::Black, &mut moves);
+        self.order(board, &mut moves);
 
         let mut best_score = isize::MAX;
         let mut best_move = None;
         let mut nodes: usize = 0;
 
         for action in moves {
-            let mut child_board = board.clone();
-            child_board.try_move(action).unwrap();
+            board.make_move(action).unwrap();
+            let (child_result, nodes_explored) = self.maxvalue(board, depth - 1, alpha, beta);
+            board.unmake_move();
 
-            let (child_result, nodes_explored) = self.maxvalue(child_board, depth - 1, alpha, beta);
             nodes += nodes_explored;
 
             if child_result.score < best_score {
                 best_score = child_result.score;
-                best_move = Some(action); // <-- Opponent's best move at this level
+                best_move = Some(action); // opponent's best move at this level
             }
 
             if best_score <= alpha {
@@ -184,7 +193,7 @@ impl Strategy for Minimax {
         // iterative deepening
         self.start = Instant::now();
         let mut best_move = None;
-        for depth in 1..=Minimax::MAX_DEPTH {
+        for depth in 1..=self.max_depth {
             if self.should_stop() {
                 break; // time's up
             }
@@ -192,8 +201,8 @@ impl Strategy for Minimax {
             let alpha = isize::MIN;
             let beta = isize::MAX;
             let (result, nodes) = match board.to_move() {
-                Color::Black => self.minvalue(board.to_owned(), depth, alpha, beta),
-                Color::White => self.maxvalue(board.to_owned(), depth, alpha, beta),
+                Color::Black => self.minvalue(board, depth, alpha, beta),
+                Color::White => self.maxvalue(board, depth, alpha, beta),
             };
 
             if let Some(mv) = result.attempt {

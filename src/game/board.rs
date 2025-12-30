@@ -103,7 +103,7 @@ impl IntoIterator for Position {
 /// Core representation of a chess board.
 /// Information needed to unmake a move
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
-struct UndoInfo {
+pub struct UndoInfo {
     move_made: Move,
     captured: Option<Piece>,
     castling_rights: CastlingRights,
@@ -136,7 +136,7 @@ pub struct Board {
     moves: Vec<Move>,
 
     /// Undo stack for make/unmake operations
-    undo_stack: Vec<UndoInfo>,
+    pub undo_stack: Vec<UndoInfo>,
 }
 
 impl Board {
@@ -240,7 +240,7 @@ impl Board {
                 temp.populate_legal_moves(temp.to_move(), &mut moves);
                 for action in moves {
                     let mut board = self.clone();
-                    board.try_move(action).unwrap();
+                    board.make_move(action).unwrap();
                     board.to_move = !board.to_move;
                     nodes += board.perft(d - 1);
                 }
@@ -299,9 +299,11 @@ impl Board {
     }
 
     fn filter_legal_moves(&mut self, attempt: Move) -> bool {
-        // TODO: unmake move
-        match self.try_move(attempt) {
-            Ok(_) => true,
+        match self.make_move(attempt) {
+            Ok(_) => {
+                self.unmake_move();
+                true
+            }
             Err(IllegalMove::Check) => false,
             Err(e) => panic!(
                 "Engine generated invalid pseudo-legal move {attempt}: {e}.\nBoard: {}\nMoves: {}",
@@ -468,126 +470,202 @@ impl Board {
         }
     }
 
-    fn make_move(&mut self, piece: Piece, start: Tile, stop: Tile) -> Option<Piece> {
-        // pick up piece
+    pub fn make_move(&mut self, attempt: Move) -> Result<MoveKind, IllegalMove> {
+        // piece being moved
+        let start = attempt.start();
+        let stop = attempt.stop();
+        let piece = match self.occupants[start] {
+            Some(p) if p.color == self.to_move => Ok(p),
+            Some(p) => Err(IllegalMove::UnownedPiece(p)),
+            None => Err(IllegalMove::NonexistentPiece(start)),
+        }?;
+
+        // check specials
+        match (attempt.special(), piece.kind) {
+            (Some(SpecialMove::Castle), kind) if kind != PieceKind::King => {
+                Err(IllegalMove::NotPossible)
+            }
+            _ => Ok(()),
+        }?;
+
+        // save state
+        let mut undo = UndoInfo {
+            move_made: attempt,
+            captured: None,
+            castling_rights: self.castling_rights,
+            castled_rook: None,
+        };
+
+        // 1. pick up piece
         self.positions[piece.kind] ^= start;
         self.occupancy[piece.color] ^= start;
-        self.occupants[start.as_index()] = None;
+        self.occupants[start] = None;
 
-        // capture other
-        let captured = self.occupants[stop].inspect(|c| {
+        // 2. capture at destination (if any)
+        undo.captured = self.occupants[stop].inspect(|c| {
             self.positions[c.kind] ^= stop;
             self.occupancy[c.color] ^= stop;
         });
 
-        // drop piece
+        // 3. drop piece at destination
         self.positions[piece.kind] |= stop;
         self.occupancy[piece.color] |= stop;
-        self.occupants[stop.as_index()] = Some(piece);
+        self.occupants[stop] = Some(piece);
 
-        captured
-    }
+        // postprocessing: handle castle
+        if let Some(SpecialMove::Castle) = attempt.special() {
+            let rank = start.rank();
+            let (rook_start, rook_stop) = if stop.file() == 6 {
+                // Kingside
+                (Tile::new(rank, 7), Tile::new(rank, 5))
+            } else {
+                // queenside
+                (Tile::new(rank, 0), Tile::new(rank, 3))
+            };
 
-    fn unmake_move(&mut self, piece: Piece, start: Tile, stop: Tile, captured: Option<Piece>) {
-        // pick up piece
-        self.positions[piece.kind] ^= stop;
-        self.occupancy[piece.color] ^= stop;
-        self.occupants[stop.as_index()] = None;
+            undo.castled_rook = Some((rook_start, rook_stop));
 
-        // drop piece
-        self.positions[piece.kind] |= start;
-        self.occupancy[piece.color] |= start;
-        self.occupants[start.as_index()] = Some(piece);
-
-        // uncapture other
-        if let Some(captured) = captured {
-            self.positions[captured.kind] |= stop;
-            self.occupancy[captured.color] |= stop;
-            self.occupants[stop.as_index()] = Some(captured);
+            // actually move the rook
+            self.positions[PieceKind::Rook] ^= rook_start;
+            self.positions[PieceKind::Rook] |= rook_stop;
+            self.occupancy[piece.color] ^= rook_start;
+            self.occupancy[piece.color] |= rook_stop;
+            self.occupants[rook_start.as_index()] = None;
+            self.occupants[rook_stop.as_index()] = Some(Piece {
+                color: piece.color,
+                kind: PieceKind::Rook,
+            });
         }
 
-        // TODO: other state changes
+        // final postprocessing
+        self.manage_castling_rights(piece, attempt, undo.captured);
+        self.to_move = !self.to_move;
+
+        // now, have to check legality of board state
+        if let Some(king) = self.king_of(piece.color)
+            && self.is_attacked(king, !piece.color)
+        {
+            // undo the move
+            self.to_move = !self.to_move;
+            self.castling_rights = undo.castling_rights;
+
+            // un-castle rook if needed
+            if let Some((rook_start, rook_stop)) = undo.castled_rook {
+                self.positions[PieceKind::Rook] ^= rook_stop;
+                self.positions[PieceKind::Rook] |= rook_start;
+                self.occupancy[piece.color] ^= rook_stop;
+                self.occupancy[piece.color] |= rook_start;
+                self.occupants[rook_stop] = None;
+                self.occupants[rook_start] = Some(Piece {
+                    color: piece.color,
+                    kind: PieceKind::Rook,
+                });
+            }
+
+            // reverse piece movement
+            self.positions[piece.kind] ^= stop;
+            self.occupancy[piece.color] ^= stop;
+            self.occupants[stop.as_index()] = None;
+
+            self.positions[piece.kind] |= start;
+            self.occupancy[piece.color] |= start;
+            self.occupants[start.as_index()] = Some(piece);
+
+            // restore captured piece
+            if let Some(captured) = undo.captured {
+                self.positions[captured.kind] |= stop;
+                self.occupancy[captured.color] |= stop;
+                self.occupants[stop.as_index()] = Some(captured);
+            }
+
+            return Err(IllegalMove::Check);
+        }
+
+        // move was legal: determine move kind, then push to undo stack and moves vector
+        let move_kind = undo
+            .captured
+            .map(|p| MoveKind::Capture(p.kind))
+            .unwrap_or(MoveKind::Quiet);
+
+        self.moves.push(attempt);
+        self.undo_stack.push(undo);
+
+        Ok(move_kind)
     }
 
-    fn castle(&mut self, color: Color, attempt: Move) {
-        debug_assert_eq!(
-            attempt.special(),
-            Some(SpecialMove::Castle),
-            "Attempted a castle on a non-castle attempted move"
-        );
+    pub fn unmake_move(&mut self) {
+        let undo = self
+            .undo_stack
+            .pop()
+            .expect("unmake_move called with empty undo_stack");
 
-        let rank = attempt.start().rank();
-        let (rook_start, rook_stop) = if attempt.stop().file() == 6 {
-            // Kingside: rook h→f
-            (Tile::new(rank, 7), Tile::new(rank, 5))
-        } else {
-            // Queenside: rook a→d
-            (Tile::new(rank, 0), Tile::new(rank, 3))
-        };
-
-        debug_assert_eq!(
-            self.occupants[rook_start],
-            Some(Piece {
-                kind: PieceKind::Rook,
-                color
-            }),
-            "Rook not found at start position for castling"
-        );
-
-        self.positions[PieceKind::Rook] ^= rook_start;
-        self.positions[PieceKind::Rook] |= rook_stop;
-        self.occupancy[color] ^= rook_start;
-
-        self.occupancy[color] |= rook_stop;
-        self.occupants[rook_start] = None;
-        self.occupants[rook_stop] = Some(Piece {
-            color,
-            kind: PieceKind::Rook,
-        });
-    }
-
-    /// Tries to make `attempt` on the given board, returning the kind of move (or error) that occurred.
-    pub fn try_move(&mut self, attempt: Move) -> Result<MoveKind, IllegalMove> {
+        let attempt = undo.move_made;
         let start = attempt.start();
         let stop = attempt.stop();
-        match self.occupants[start.as_index()] {
-            Some(
-                piece @ Piece {
-                    color: player,
-                    kind,
-                },
-            ) if player == self.to_move => {
-                // first check that the tile is even in the pseudo-legal moveset
-                if self
-                    .pseudo_legal_movesets_from_tile(player, kind, start)
-                    .any(|(_, m)| m == attempt)
-                {
-                    // move execution
-                    let captured = self.make_move(piece, start, stop);
 
-                    // king must not be left in check
-                    if let Some(king) = self.king_of(piece.color)
-                        && self.is_attacked(king, !player)
-                    {
-                        self.unmake_move(piece, start, stop, captured);
-                        return Err(IllegalMove::Check);
-                    } else if let Some(SpecialMove::Castle) = attempt.special() {
-                        self.castle(player, attempt)
-                    }
+        // get the piece that was moved (it's at stop now)
+        let piece = self.occupants[stop].unwrap_or_else(|| {
+            panic!(
+                "No piece at destination during unmake\n\
+                 Move being unmade: {}\n\
+                 Start: {} (has piece: {})\n\
+                 Stop: {} (has piece: {})\n\
+                 Undo stack size: {}\n\
+                 Moves vector: {}\n\
+                 Current turn: {:?}\n\
+                 Castling rights in undo: {:?}",
+                attempt,
+                start,
+                self.occupants[start.as_index()].is_some(),
+                stop,
+                self.occupants[stop.as_index()].is_some(),
+                self.undo_stack.len(),
+                self.moves
+                    .iter()
+                    .map(|m| m.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" "),
+                self.to_move,
+                undo.castling_rights
+            )
+        });
 
-                    self.to_move = !self.to_move;
-                    self.manage_castling_rights(piece, attempt, captured);
-                    self.moves.push(attempt);
-                    Ok(captured
-                        .map(|p| MoveKind::Capture(p.kind))
-                        .unwrap_or(MoveKind::Quiet))
-                } else {
-                    Err(IllegalMove::NotPossible)
-                }
-            }
-            Some(piece) => Err(IllegalMove::UnownedPiece(piece)),
-            None => Err(IllegalMove::NonexistentPiece(attempt.stop())),
+        // other state
+        self.to_move = !self.to_move;
+        self.castling_rights = undo.castling_rights;
+
+        // un-castle rook if this was a castling move
+        if let Some((rook_start, rook_stop)) = undo.castled_rook {
+            self.positions[PieceKind::Rook] ^= rook_stop;
+            self.positions[PieceKind::Rook] |= rook_start;
+            self.occupancy[piece.color] ^= rook_stop;
+            self.occupancy[piece.color] |= rook_start;
+            self.occupants[rook_stop] = None;
+            self.occupants[rook_start] = Some(Piece {
+                color: piece.color,
+                kind: PieceKind::Rook,
+            });
         }
+
+        // Pick up piece from stop
+        self.positions[piece.kind] ^= stop;
+        self.occupancy[piece.color] ^= stop;
+        self.occupants[stop] = None;
+
+        // Drop piece at start
+        self.positions[piece.kind] |= start;
+        self.occupancy[piece.color] |= start;
+        self.occupants[start] = Some(piece);
+
+        // Restore captured piece (if any)
+        if let Some(captured) = undo.captured {
+            self.positions[captured.kind] |= stop;
+            self.occupancy[captured.color] |= stop;
+            self.occupants[stop] = Some(captured);
+        }
+
+        // Remove from moves vector (to keep it in sync)
+        self.moves.pop();
     }
 
     fn king_of(&self, color: Color) -> Option<Tile> {
@@ -874,7 +952,7 @@ mod board_tests {
 
         // kings pawn for white then black
         let attempt = Move::new(Tile::E2, Tile::E4);
-        board.try_move(attempt).unwrap();
+        board.make_move(attempt).unwrap();
 
         assert_eq!(board.to_move, Color::Black);
         assert!(!board.occupied(attempt.start()));
@@ -893,6 +971,89 @@ mod board_tests {
                 color: Color::White
             })
         );
+    }
+
+    #[test]
+    fn test_make_unmake_simple() {
+        let mut board = Board::new();
+        Board::initialize();
+        let before = board.clone();
+
+        let moves = [
+            Move::new(Tile::E2, Tile::E4),
+            Move::new(Tile::E7, Tile::E5),
+            Move::new(Tile::F1, Tile::A6),
+            Move::new(Tile::B7, Tile::A6),
+            Move::new(Tile::G1, Tile::F3),
+            Move::new(Tile::C7, Tile::C5),
+            Move::new(Tile::E1, Tile::G1) | SpecialMove::Castle,
+        ];
+        for &move_ in &moves {
+            board.make_move(move_).unwrap();
+        }
+
+        for _ in &moves {
+            board.unmake_move();
+        }
+        assert_eq!(before, board);
+    }
+
+    #[test]
+    fn test_make_failure() {
+        let mut board = Board::new();
+        Board::initialize();
+        let before = board.clone();
+
+        // setup board
+        let moves = [
+            Move::new(Tile::E2, Tile::E4),
+            Move::new(Tile::E7, Tile::E5),
+            Move::new(Tile::F1, Tile::A6),
+            Move::new(Tile::B7, Tile::A6),
+            Move::new(Tile::G1, Tile::F3),
+            Move::new(Tile::C7, Tile::C5),
+            Move::new(Tile::E1, Tile::G1) | SpecialMove::Castle,
+        ];
+        for &move_ in &moves {
+            board.make_move(move_).unwrap();
+        }
+        let middle = board.clone();
+
+        // have failing move
+        assert!(board.make_move(Move::new(Tile::G1, Tile::A1)).is_err());
+        assert_eq!(board, middle);
+
+        for _ in &moves {
+            board.unmake_move();
+        }
+        assert_eq!(board, before);
+    }
+
+    #[test]
+    fn test_make_failure_on_castle() {
+        let mut board = Board::new();
+        Board::initialize();
+        let before = board.clone();
+
+        // setup board
+        let moves = [Move::new(Tile::E2, Tile::E4), Move::new(Tile::E7, Tile::E5)];
+        for &move_ in &moves {
+            board.make_move(move_).unwrap();
+        }
+        let middle = board.clone();
+
+        // have failing move
+        assert!(
+            board
+                .make_move(Move::new(Tile::D1, Tile::G1) | SpecialMove::Castle,)
+                .is_err()
+        );
+        assert_eq!(board, middle);
+
+        for _ in &moves {
+            board.unmake_move();
+        }
+        assert_eq!(board, before);
     }
 
     #[test]
@@ -931,7 +1092,7 @@ mod board_tests {
 
         assert!(board.castling_rights().has(Right::WhiteQueenSide));
         let capture = Move::new(Tile::A2, Tile::A1);
-        let result = board.try_move(capture).unwrap();
+        let result = board.make_move(capture).unwrap();
 
         assert_eq!(result, MoveKind::Capture(PieceKind::Rook));
         assert!(!board.castling_rights().has(Right::WhiteQueenSide));
@@ -944,7 +1105,7 @@ mod board_tests {
         Board::initialize();
 
         let attempt = Move::new(Tile::E1, Tile::C1) | SpecialMove::Castle;
-        board.try_move(attempt).unwrap();
+        board.make_move(attempt).unwrap();
 
         assert!(board.occupants[Tile::A1].is_none());
         assert_eq!(

@@ -189,8 +189,8 @@ mod generation_tests {
         Board::initialize();
 
         // kings pawn for white then black
-        board.try_move(Move::new(Tile::E2, Tile::E4)).unwrap();
-        board.try_move(Move::new(Tile::E7, Tile::E5)).unwrap();
+        board.make_move(Move::new(Tile::E2, Tile::E4)).unwrap();
+        board.make_move(Move::new(Tile::E7, Tile::E5)).unwrap();
 
         assert_eq!(
             Board::KING_MOVES[Tile::E1.as_index()],
