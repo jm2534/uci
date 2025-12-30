@@ -41,3 +41,11 @@ lto = "fat"          # Enable full Link Time Optimization
 codegen-units = 1    # Reduce parallel code generation for better optimization
 # panic = "abort"      # Reduce binary size and potential overhead
 strip = true         # Strip symbols from binary to reduce size
+
+[dev-dependencies]
+criterion = "0.3"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+
+[[bench]]
+name = "uci-bench"
+harness = false
