@@ -11,6 +11,7 @@ use std::io::{self, stdout};
 use thiserror::Error;
 use tracing::{Level, debug, instrument};
 use uci::command::Command;
+use uci::game::moves::PseudoLegalMove;
 use uci::{
     engine::{Engine, strategy::minimax::Minimax},
     game::{
@@ -38,7 +39,7 @@ pub fn prompt_number_of_players() -> usize {
 pub enum SelectionResult {
     Selected,
     Deselected,
-    MoveMade(Move),
+    MoveMade(PseudoLegalMove),
     InvalidPiece,
     EmptySquare,
 }
@@ -146,7 +147,10 @@ impl Game {
                     }
                     SelectionResult::MoveMade(chess_move) => {
                         // Attempt to make the move through the engine
-                        match self.engine.handle(Command::MovePosition(vec![chess_move])) {
+                        match self
+                            .engine
+                            .handle(Command::MovePosition(vec![chess_move.into()]))
+                        {
                             Ok(_) => {
                                 self.state.clear_selection();
                                 if self.engine.finished() {
@@ -193,7 +197,7 @@ pub struct State {
     pub selected_pos: Option<Tile>,
 
     /// Available moves for the selected piece
-    pub available_moves: Vec<Move>,
+    pub available_moves: Vec<PseudoLegalMove>,
 
     /// Player color (for board orientation)
     pub player: Color,

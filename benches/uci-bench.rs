@@ -53,17 +53,22 @@ fn bench_legal_movegen(c: &mut Criterion) {
         let num_moves = moves_count.len();
         group.throughput(Throughput::Elements(num_moves as u64));
 
+        let moves = Vec::new();
         group.bench_with_input(
             BenchmarkId::from_parameter(position.name),
             &board,
-            |b, board| {
+            move |b, board| {
                 b.iter_batched_ref(
-                    || board.clone(),
-                    |board| {
+                    || {
+                        let board = board.clone();
+                        let mut moves = moves.clone();
+                        moves.clear();
+                        (board, moves)
+                    },
+                    |(board, moves)| {
                         // Collect moves to force iterator evaluation and legality checking
                         let color = board.to_move();
-                        let mut moves = Vec::new();
-                        black_box(board).populate_legal_moves(color, &mut moves);
+                        black_box(board).populate_legal_moves(color, moves);
                     },
                     BatchSize::SmallInput,
                 );
@@ -101,7 +106,7 @@ fn bench_make_move(c: &mut Criterion) {
                     b.iter_batched_ref(
                         || board.to_owned(),
                         |board| {
-                            black_box(board).make_move(*move_to_make).unwrap();
+                            black_box(board).make_validated_move(*move_to_make).unwrap();
                         },
                         criterion::BatchSize::SmallInput,
                     );
@@ -223,7 +228,10 @@ fn bench_search_depth(c: &mut Criterion) {
 /// Helper function for depth-limited search
 /// Returns (best_move, nodes_searched)
 /// This is what you'd typically measure for "nodes per second" in chess engines.
-fn search_to_depth(board: &mut Board, depth: usize) -> (Option<uci::game::moves::Move>, usize) {
+fn search_to_depth(
+    board: &mut Board,
+    depth: usize,
+) -> (Option<uci::game::moves::PseudoLegalMove>, usize) {
     let strategy = Minimax::default();
 
     let alpha = isize::MIN;

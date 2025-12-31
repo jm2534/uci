@@ -1,4 +1,4 @@
-use crate::game::{Color, board::Board, moves::Move, piece::PieceKind};
+use crate::game::{Color, board::Board, moves::PseudoLegalMove, piece::PieceKind};
 
 pub mod minimax;
 
@@ -53,5 +53,5 @@ pub trait Strategy {
         PIECE_VALUES[piece as usize]
     }
 
-    fn step(&mut self, board: &mut Board) -> Move;
+    fn step(&mut self, board: &mut Board) -> PseudoLegalMove;
 }

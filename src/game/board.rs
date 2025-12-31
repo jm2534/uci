@@ -7,6 +7,7 @@ pub mod tile;
 
 pub use castling::{CastlingRights, Right};
 pub use fen::ParseBoardError;
+pub use tile::Tile;
 
 use crate::game::{
     board::{
@@ -14,7 +15,7 @@ use crate::game::{
         tile::Tiles,
     },
     color::Color,
-    moves::SpecialMove,
+    moves::{PseudoLegalMove, SpecialMove},
     piece::{Piece, PieceKind},
 };
 use bitset::Bitset;
@@ -22,7 +23,6 @@ use std::ops::{Index, IndexMut};
 use thiserror::Error;
 
 use super::moves::{Move, MoveKind};
-use tile::Tile;
 
 macro_rules! assert_board_consistent {
     ($board:expr, $context:expr) => {
@@ -199,7 +199,7 @@ impl IntoIterator for Position {
 /// Information needed to unmake a move
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct UndoInfo {
-    move_made: Move,
+    move_made: PseudoLegalMove,
     captured: Option<Piece>,
     castling_rights: CastlingRights,
     castled_rook: Option<(Tile, Tile)>, // (from, to) if this move was castling
@@ -320,19 +320,17 @@ impl Board {
     /// the specified recursion `depth`, returning the number of leaf nodes of
     /// the game tree at that location. Useful for debugging by comparison to
     /// published values.
-    pub fn perft(&self, depth: usize) -> usize {
+    pub fn perft(&mut self, depth: usize) -> usize {
         let mut nodes = 0;
         match depth {
             0 => 1,
             d => {
-                let mut temp = self.clone();
                 let mut moves = Vec::new();
-                temp.populate_legal_moves(temp.to_move(), &mut moves);
+                self.populate_legal_moves(self.to_move(), &mut moves);
                 for action in moves {
-                    let mut board = self.clone();
-                    board.make_move(action).unwrap();
-                    board.to_move = !board.to_move;
-                    nodes += board.perft(d - 1);
+                    self.make_validated_move(action).unwrap();
+                    nodes += self.perft(d - 1);
+                    self.unmake_move();
                 }
                 nodes
             }
@@ -372,7 +370,7 @@ impl Board {
         by: Color,
         kind: PieceKind,
         tile: Tile,
-    ) -> impl Iterator<Item = (PieceKind, Move)> + use<> {
+    ) -> impl Iterator<Item = (PieceKind, PseudoLegalMove)> + use<> {
         let moveset = match kind {
             PieceKind::Pawn => self.pawn_moves(tile),
             PieceKind::Knight => self.knight_moves(by, tile),
@@ -394,8 +392,8 @@ impl Board {
     }
 
     #[inline]
-    fn filter_legal_moves(&mut self, attempt: Move) -> bool {
-        match self.make_move(attempt) {
+    fn filter_legal_moves(&mut self, attempt: PseudoLegalMove) -> bool {
+        match self.make_validated_move(attempt) {
             Ok(_) => {
                 self.unmake_move();
                 true
@@ -407,7 +405,7 @@ impl Board {
 
     /// Yields all legal moves for the indicated player `by`. Note that it may not be `by`'s turn.
     #[inline]
-    pub fn populate_legal_moves(&mut self, by: Color, moves: &mut Vec<Move>) {
+    pub fn populate_legal_moves(&mut self, by: Color, moves: &mut Vec<PseudoLegalMove>) {
         for kind in enum_iterator::all() {
             let occupancy = self.positions[kind] & self.occupancy[by];
             for tile in occupancy.tiles() {
@@ -427,7 +425,7 @@ impl Board {
         by: Color,
         kind: PieceKind,
         tile: Tile,
-        moves: &mut Vec<Move>,
+        moves: &mut Vec<PseudoLegalMove>,
     ) {
         moves.clear();
         for (_, attempt) in self.pseudo_legal_movesets_from_tile(by, kind, tile) {
@@ -442,10 +440,11 @@ impl Board {
         let set = &mut self.positions[piece.kind];
         *set |= tile;
         self.occupancy[piece.color] |= tile;
-        self.occupants[tile.as_index()] = Some(piece);
+        self.occupants[tile] = Some(piece);
     }
 
-    /// Returns whether the indicated tile is attacked by the indicated player.
+    /// Whether the `tile` is attacked by the indicated player, meaning may be reached by a piece of `by`
+    /// (without regard to whether the move is legal, i.e. whether it would leave `by` in check).
     #[inline]
     fn is_attacked(&self, tile: Tile, by: Color) -> bool {
         // We model an attacker of a certain type as having already moved to the attacked tile,
@@ -516,7 +515,12 @@ impl Board {
     /// Manages castling rights based on `piece` having just made the given move (potentially
     /// with a capture).
     #[inline]
-    fn manage_castling_rights(&mut self, piece: Piece, attempt: Move, captured: Option<Piece>) {
+    fn manage_castling_rights(
+        &mut self,
+        piece: Piece,
+        attempt: PseudoLegalMove,
+        captured: Option<Piece>,
+    ) {
         const ROOK_STARTS: [Bitset; 2] = [
             Bitset(Tile::A8.as_bitset().0 | Tile::H8.as_bitset().0),
             Bitset(Tile::A1.as_bitset().0 | Tile::H1.as_bitset().0),
@@ -563,6 +567,40 @@ impl Board {
         }
     }
 
+    /// Performs `attempt` on the board, updating the board state and castling rights
+    /// and returning the move kind if successful, else rolling back all changes and returning an
+    /// `IllegalMove` variant if the move is not permitted.
+    ///
+    /// This is the entrypoint for making arbitrary, potentially unsound moves on the board, meaning any
+    /// `attempt` will be confirmed as pseudo-legal (i.e., existing within the moveset of each piece)
+    /// in addition to the necessary legality check. If `attempt` comes from the engine itself,  e.g.
+    /// `Board::populate_legal_moves`, it is guaranteed to be at psuedo-legal, making this check redundant.
+    /// Callers should instead prefer `Board::make_validated_move` (whose argument type of `PseudoLegalMove`
+    /// encourages this) when a move has these guarantees.
+    ///
+    /// ### Examples
+    ///
+    /// #### Opening Moves
+    /// Standard e2e4 opening for white is a quiet move.
+    /// ```rust
+    /// use uci::game::{board::{Board, Tile}, moves::{Move, MoveKind}};
+    ///
+    /// Board::initialize();
+    /// let mut board = Board::default();
+    /// let move_kind = board.make_move(Move::new(Tile::E2, Tile::E4));
+    /// assert_eq!(move_kind, Ok(MoveKind::Quiet));
+    /// ```
+    ///
+    /// #### Illegal Moves
+    /// Moves outside the moveset of the piece at `attempt.start()` will return `Err(IllegalMove::NotPossible)`.
+    /// ```rust
+    /// use uci::game::{board::{Board, Tile, IllegalMove}, moves::{Move, MoveKind}};
+    ///
+    /// Board::initialize();
+    /// let mut board = Board::default();
+    /// let move_kind = board.make_move(Move::new(Tile::E2, Tile::G1));
+    /// assert_eq!(move_kind, Err(IllegalMove::NotPossible));
+    /// ```
     #[inline]
     pub fn make_move(&mut self, attempt: Move) -> Result<MoveKind, IllegalMove> {
         let start = attempt.start();
@@ -575,17 +613,41 @@ impl Board {
         // check moveset
         match self
             .pseudo_legal_movesets_from_tile(self.to_move, piece.kind, start)
-            .find(|&(_, m)| m == attempt)
+            .find(|&(_, m)| m.0 == attempt)
         {
             Some((_, _)) => Ok(()),
             None => Err(IllegalMove::NotPossible),
         }?;
 
-        self.make_move_unchecked(attempt)
+        self.make_validated_move(PseudoLegalMove(attempt))
     }
 
+    /// Performs a necessarily pseudo-legal move `attempt` on the board, updating the board state and
+    /// castling rights and returning the move kind if successful, else rolling back all changes and
+    /// returning an `IllegalMove` variant if the move is not permitted. This avoids the overhead of
+    /// checking pseudo-legality for `attempt`, and is thus preferred for moves originating from the
+    /// engine given its reduced overhead. See `Board::make_move` for making moves of arbitrary origin.
+    ///
+    /// ### Examples
+    ///
+    /// #### Performing Moves Returned by the Engine
+    /// ```rust
+    /// use uci::game::{Color, board::{Board, Tile}, moves::{Move, MoveKind}};
+    ///
+    /// Board::initialize();
+    /// let mut board = Board::default();
+    ///
+    /// let mut moves = Vec::new();
+    /// board.populate_legal_moves(Color::White, &mut moves);
+    ///
+    /// let move_kind = board.make_validated_move(moves[0]);
+    /// assert_eq!(move_kind, Ok(MoveKind::Quiet));
+    /// ```
     #[inline]
-    pub fn make_move_unchecked(&mut self, attempt: Move) -> Result<MoveKind, IllegalMove> {
+    pub fn make_validated_move(
+        &mut self,
+        attempt: PseudoLegalMove,
+    ) -> Result<MoveKind, IllegalMove> {
         #[cfg(debug_assertions)]
         assert_board_consistent!(self, "make_move_unchecked start");
 
@@ -948,7 +1010,7 @@ struct CastlingMoves {
 }
 
 impl Iterator for CastlingMoves {
-    type Item = (PieceKind, Move);
+    type Item = (PieceKind, PseudoLegalMove);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.kind != PieceKind::King {
@@ -956,7 +1018,7 @@ impl Iterator for CastlingMoves {
         }
 
         self.tiles.next().map(|tile| {
-            let attempt = Move::new(self.source, tile) | SpecialMove::Castle;
+            let attempt = PseudoLegalMove(Move::new(self.source, tile) | SpecialMove::Castle);
             (self.kind, attempt)
         })
     }
@@ -972,9 +1034,9 @@ struct PieceMoves {
 }
 
 impl PieceMoves {
-    pub fn moves(self) -> impl Iterator<Item = (PieceKind, Move)> {
+    pub fn moves(self) -> impl Iterator<Item = (PieceKind, PseudoLegalMove)> {
         self.moveset
-            .map(move |tile| (self.kind, Move::new(self.tile, tile)))
+            .map(move |tile| (self.kind, PseudoLegalMove(Move::new(self.tile, tile))))
             .chain(CastlingMoves {
                 kind: self.kind,
                 source: self.tile,
@@ -989,7 +1051,7 @@ mod board_tests {
     use crate::game::Move;
     use crate::game::board::Right;
     use crate::game::color::Color;
-    use crate::game::moves::{MoveKind, SpecialMove};
+    use crate::game::moves::{MoveKind, PseudoLegalMove, SpecialMove};
     use crate::{
         game::board::{
             Tile,
@@ -1208,10 +1270,15 @@ mod board_tests {
         board.populate_legal_moves(Color::White, &mut move_vec);
         let actual = move_vec
             .into_iter()
-            .filter(|m| {
-                board
+            .filter_map(|m| {
+                if board
                     .occupant(m.start())
                     .is_some_and(|p| p.kind == PieceKind::King)
+                {
+                    Some(m.into())
+                } else {
+                    None
+                }
             })
             .collect::<HashSet<Move>>();
 
@@ -1267,12 +1334,17 @@ mod board_tests {
             })
             .collect::<HashSet<_>>();
 
-        let expected = HashSet::from_iter([
-            Move::new(Tile::E8, Tile::D8),
-            Move::new(Tile::E8, Tile::F8),
-            Move::new(Tile::E8, Tile::E7),
-            Move::new(Tile::E8, Tile::D7),
-        ]);
+        let expected = HashSet::from_iter(
+            [
+                Move::new(Tile::E8, Tile::D8),
+                Move::new(Tile::E8, Tile::F8),
+                Move::new(Tile::E8, Tile::E7),
+                Move::new(Tile::E8, Tile::D7),
+            ]
+            .into_iter()
+            .map(PseudoLegalMove),
+        );
+
         assert_eq!(pseudo_legal_moves, expected);
 
         let legal_moves = pseudo_legal_moves

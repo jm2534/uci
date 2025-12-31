@@ -47,7 +47,7 @@ impl<S: Strategy> Engine<S> {
 
     pub fn step(&mut self) -> Result<MoveKind, IllegalMove> {
         let cpu_move = self.strategy.step(&mut self.board);
-        self.board.make_move(cpu_move)
+        self.board.make_validated_move(cpu_move)
     }
 
     pub fn handle(&mut self, command: Command) -> Result<Option<String>, IllegalMove> {

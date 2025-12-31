@@ -14,7 +14,7 @@ pub(crate) mod rook;
 mod tests {
     use crate::game::{
         board::{Board, tile::Tile},
-        moves::Move,
+        moves::{Move, PseudoLegalMove},
         piece::PieceKind,
     };
     use std::collections::HashSet;
@@ -25,24 +25,24 @@ mod tests {
         let mut board = Board::new();
         let mut move_vec = Vec::new();
         board.populate_legal_moves(board.to_move(), &mut move_vec);
-        let moves: HashSet<Move> = move_vec.into_iter().collect();
+        let moves: HashSet<PseudoLegalMove> = move_vec.into_iter().collect();
 
         let mut expected_moves = HashSet::new();
         let pawns = board.positions[PieceKind::Pawn] & board.occupancy[board.to_move];
         for start in pawns.tiles() {
             let single_push = Move::new(start, Tile::new(start.rank() + 1, start.file()));
-            expected_moves.insert(single_push);
+            expected_moves.insert(PseudoLegalMove(single_push));
 
             let double_push = Move::new(start, Tile::new(start.rank() + 2, start.file()));
-            expected_moves.insert(double_push);
+            expected_moves.insert(PseudoLegalMove(double_push));
         }
 
         let knights = board.positions[PieceKind::Knight] & board.occupancy[board.to_move];
         for start in knights.tiles() {
             let left = Move::new(start, Tile::new(start.rank() + 2, start.file() - 1));
             let right = Move::new(start, Tile::new(start.rank() + 2, start.file() + 1));
-            expected_moves.insert(left);
-            expected_moves.insert(right);
+            expected_moves.insert(PseudoLegalMove(left));
+            expected_moves.insert(PseudoLegalMove(right));
         }
 
         assert_eq!(moves, expected_moves);

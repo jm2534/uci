@@ -3,12 +3,12 @@ use std::time::{Duration, Instant};
 use super::Strategy;
 use crate::game::Color;
 use crate::game::board::Board;
-use crate::game::moves::Move;
+use crate::game::moves::PseudoLegalMove;
 
 #[derive(Eq, PartialEq)]
 pub struct ScoredMove {
     pub score: isize,
-    pub attempt: Option<Move>,
+    pub attempt: Option<PseudoLegalMove>,
 }
 
 impl Ord for ScoredMove {
@@ -54,7 +54,7 @@ impl Minimax {
 
     /// By default, lists the  moves available to the current player on the current `board`
     /// ordered by the results of `Strategy::evaluate` called on each position.
-    pub fn order(&self, board: &mut Board, moves: &mut [Move]) {
+    pub fn order(&self, board: &mut Board, moves: &mut [PseudoLegalMove]) {
         moves.sort_by_key(|m| {
             // score captures higher than quiet moves
             match board.occupants()[m.stop().as_index()] {
@@ -94,7 +94,7 @@ impl Minimax {
 
         for action in moves {
             board
-                .make_move_unchecked(action)
+                .make_validated_move(action)
                 .expect("Search make illegal move");
 
             let (child_result, nodes_explored) = self.minvalue(board, depth - 1, alpha, beta);
@@ -159,7 +159,7 @@ impl Minimax {
 
         for action in moves {
             board
-                .make_move_unchecked(action)
+                .make_validated_move(action)
                 .expect("Search make illegal move");
 
             let (child_result, nodes_explored) = self.maxvalue(board, depth - 1, alpha, beta);
@@ -195,7 +195,7 @@ impl Minimax {
 }
 
 impl Strategy for Minimax {
-    fn step(&mut self, board: &mut Board) -> Move {
+    fn step(&mut self, board: &mut Board) -> PseudoLegalMove {
         // iterative deepening
         self.start = Instant::now();
         let mut best_move = None;
