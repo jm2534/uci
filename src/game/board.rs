@@ -613,7 +613,6 @@ impl Board {
 
         // 2. capture at destination (if any)
         undo.captured = self.occupants[stop].inspect(|c| {
-            tracing::trace!(?c, ?stop, "Capturing piece");
             self.positions[c.kind] &= !stop;
             self.occupancy[c.color] &= !stop;
             self.occupants[stop] = None;
@@ -646,17 +645,6 @@ impl Board {
                     color: self.to_move
                 }
             );
-
-            // println!(
-            //     "to-move {} piece {:?} move {} moveset {}",
-            //     self.to_move,
-            //     piece,
-            //     attempt,
-            //     self.pseudo_legal_movesets_from_tile(piece.color, piece.kind, attempt.start())
-            //         .map(|(_, m)| m.to_string())
-            //         .collect::<Vec<String>>()
-            //         .join(", ")
-            // );
 
             let (rook_start, rook_stop) = if stop.file() == 6 {
                 // kingside
@@ -768,7 +756,6 @@ impl Board {
         Ok(move_kind)
     }
 
-    #[tracing::instrument(skip(self), fields(fen = %self.fen(), stack_len = self.undo_stack.len()))]
     pub fn unmake_move(&mut self) {
         #[cfg(debug_assertions)]
         assert_board_consistent!(self, "unmake_move start");
@@ -781,7 +768,6 @@ impl Board {
         let attempt = undo.move_made;
         let start = attempt.start();
         let stop = attempt.stop();
-        tracing::trace!(?attempt, ?start, ?stop, ?undo.captured, "Unmaking move");
 
         // get the piece that was moved (it's at stop now)
         let piece = self.occupants[stop].unwrap_or_else(|| {
@@ -849,7 +835,6 @@ impl Board {
 
         // Restore captured piece (if any)
         if let Some(captured) = undo.captured {
-            tracing::trace!(?captured, ?stop, "Restoring captured piece");
             self.positions[captured.kind] |= stop;
             self.occupancy[captured.color] |= stop;
             self.occupants[stop] = Some(captured);
@@ -1314,7 +1299,7 @@ mod board_tests {
     #[test]
     fn test_king_attacked_moveset() {
         // must dodge or take
-        let mut board = Board::try_from("rkb1kQnr/ppp2ppp/8/8/8/8/8/8 b Kkq - 0 1").unwrap();
+        let mut board = Board::try_from("rnb1kQnr/ppp2ppp/8/8/8/8/8/8 b Kkq - 0 1").unwrap();
         Board::initialize();
 
         assert!(board.is_attacked(Tile::E8, Color::White));
@@ -1338,7 +1323,6 @@ mod board_tests {
         let legal_moves = pseudo_legal_moves
             .into_iter()
             .filter_map(|m| {
-                println!("Checking move: {}", m);
                 if board.filter_legal_moves(m) {
                     Some(m.stop())
                 } else {
