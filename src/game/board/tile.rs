@@ -179,14 +179,12 @@ impl<T> IndexMut<Tile> for [T] {
 /// Tile iterator over a bitset
 #[derive(Copy, Clone, Debug)]
 pub struct Tiles {
-    value: i64,
+    value: u64,
 }
 
 impl Tiles {
     pub fn new(value: Bitset) -> Self {
-        Self {
-            value: value.0 as i64,
-        }
+        Self { value: value.0 }
     }
 }
 
@@ -197,10 +195,9 @@ impl Iterator for Tiles {
         match self.value {
             0 => None,
             x => {
-                // TODO: works, but need to understand why wrapping specifically
-                let ls1b = x & x.wrapping_neg(); // isolate LS1B
-                self.value ^= ls1b; // clear LS1B
-                Some(Tile(Bitset(ls1b as u64)))
+                let ls1b = 1_u64 << (x.trailing_zeros() as u64);
+                self.value ^= ls1b;
+                Some(Tile(Bitset(ls1b)))
             }
         }
     }

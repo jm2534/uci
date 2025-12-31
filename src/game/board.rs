@@ -280,7 +280,7 @@ impl Board {
         let mut occupants = [None; 64];
         for (kind, bitset) in positions {
             for tile in (bitset & white).tiles() {
-                occupants[tile.as_index()] = Some(Piece {
+                occupants[tile] = Some(Piece {
                     kind,
                     color: Color::White,
                 });
@@ -288,7 +288,7 @@ impl Board {
         }
         for (kind, bitset) in positions {
             for tile in (bitset & black).tiles() {
-                occupants[tile.as_index()] = Some(Piece {
+                occupants[tile] = Some(Piece {
                     kind,
                     color: Color::Black,
                 });
