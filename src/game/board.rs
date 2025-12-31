@@ -26,15 +26,7 @@ use tile::Tile;
 
 macro_rules! assert_board_consistent {
     ($board:expr, $context:expr) => {
-        // 1. moves and undo_stack synchronized
-        assert_eq!(
-            $board.moves.len(),
-            $board.undo_stack.len(),
-            "Context: {}. Moves len {} != undo_stack len {}",
-            $context, $board.moves.len(), $board.undo_stack.len()
-        );
-
-        // 2. occupants array matches occupancy bitboards with correct kinds and colors
+        // 1. occupants array matches occupancy bitboards with correct kinds and colors
         for (index, element) in $board.occupants.iter().enumerate() {
             if let Some(occupant) = element {
                 let tile = Tile::from_index(index);
@@ -59,7 +51,7 @@ macro_rules! assert_board_consistent {
             }
         }
 
-        // 3. every occupancy bit corresponds to an occupant, corroborated by `positions`
+        // 2. every occupancy bit corresponds to an occupant, corroborated by `positions`
         for color in [Color::White, Color::Black] {
             let occupancy = $board.occupancy[color];
             for tile in occupancy.tiles() {
@@ -91,7 +83,7 @@ macro_rules! assert_board_consistent {
             }
         }
 
-        // 4. every position bit corresponds to an occupant of the correct color and type
+        // 3. every position bit corresponds to an occupant of the correct color and type
         for kind in enum_iterator::all::<PieceKind>() {
             let positions = $board.positions[kind];
             for tile in positions.tiles() {
@@ -235,9 +227,6 @@ pub struct Board {
     /// Player's castling rights
     castling_rights: CastlingRights,
 
-    /// Player's moves
-    moves: Vec<Move>,
-
     /// Undo stack for make/unmake operations
     pub undo_stack: Vec<UndoInfo>,
 }
@@ -306,19 +295,17 @@ impl Board {
         Self {
             occupants,
             positions,
-            moves: Vec::new(),
             pinned: Bitset(0),
             occupancy: [black, white],
             to_move: Color::White,
             castling_rights: CastlingRights::default(),
-            undo_stack: Vec::new(),
+            undo_stack: Vec::with_capacity(64),
         }
     }
 
     /// Creates an empty board, i.e. one with no pieces placed and white to move.
     pub fn empty() -> Self {
         Board {
-            moves: Vec::new(),
             pinned: Bitset(0),
             occupants: [None; 64],
             occupancy: [Bitset(0), Bitset(0)],
@@ -352,10 +339,12 @@ impl Board {
         }
     }
 
+    #[inline]
     pub fn positions(&self, kind: PieceKind) -> Bitset {
         self.positions[kind]
     }
 
+    #[inline]
     pub fn occupancy(&self, color: Color) -> Bitset {
         self.occupancy[color]
     }
@@ -366,15 +355,18 @@ impl Board {
     }
 
     /// The color of the player whose turn it is to move.
+    #[inline]
     pub fn to_move(&self) -> Color {
         self.to_move
     }
 
     /// The current castling rights of the players
+    #[inline]
     pub fn castling_rights(&self) -> CastlingRights {
         self.castling_rights
     }
 
+    #[inline]
     fn pseudo_legal_movesets_from_tile(
         &self,
         by: Color,
@@ -401,6 +393,7 @@ impl Board {
         .moves()
     }
 
+    #[inline]
     fn filter_legal_moves(&mut self, attempt: Move) -> bool {
         match self.make_move(attempt) {
             Ok(_) => {
@@ -408,20 +401,12 @@ impl Board {
                 true
             }
             Err(IllegalMove::Check) => false,
-            Err(e) => panic!(
-                "Engine generated invalid pseudo-legal move {attempt}: {e}.\nBoard: {}\nMoves: {}",
-                self.fen(),
-                self.clone()
-                    .moves
-                    .into_iter()
-                    .map(|m| m.to_string())
-                    .collect::<Vec<String>>()
-                    .join(" ")
-            ),
+            Err(e) => panic!("Engine generated invalid pseudo-legal move {attempt}: {e}"),
         }
     }
 
     /// Yields all legal moves for the indicated player `by`. Note that it may not be `by`'s turn.
+    #[inline]
     pub fn populate_legal_moves(&mut self, by: Color, moves: &mut Vec<Move>) {
         for kind in enum_iterator::all() {
             let occupancy = self.positions[kind] & self.occupancy[by];
@@ -436,6 +421,7 @@ impl Board {
         }
     }
 
+    #[inline]
     pub fn populate_legal_moves_from_tile(
         &mut self,
         by: Color,
@@ -460,6 +446,7 @@ impl Board {
     }
 
     /// Returns whether the indicated tile is attacked by the indicated player.
+    #[inline]
     fn is_attacked(&self, tile: Tile, by: Color) -> bool {
         // We model an attacker of a certain type as having already moved to the attacked tile,
         // and determine whether it is able to reach its original position (pseudo-legally, since the ability
@@ -515,17 +502,20 @@ impl Board {
     }
 
     /// Returns `true` if `tile` is occupied, and `false` otherwise.
+    #[inline]
     pub fn occupied(&self, tile: Tile) -> bool {
         self.occupant(tile).is_some()
     }
 
     /// Returns the piece occupying `tile` if any, and `None` otherwise.
+    #[inline]
     pub fn occupant(&self, tile: Tile) -> Option<Piece> {
         self.occupants[tile.as_index()]
     }
 
     /// Manages castling rights based on `piece` having just made the given move (potentially
     /// with a capture).
+    #[inline]
     fn manage_castling_rights(&mut self, piece: Piece, attempt: Move, captured: Option<Piece>) {
         const ROOK_STARTS: [Bitset; 2] = [
             Bitset(Tile::A8.as_bitset().0 | Tile::H8.as_bitset().0),
@@ -573,13 +563,9 @@ impl Board {
         }
     }
 
+    #[inline]
     pub fn make_move(&mut self, attempt: Move) -> Result<MoveKind, IllegalMove> {
-        #[cfg(debug_assertions)]
-        assert_board_consistent!(self, "make_move start");
-
-        // piece being moved
         let start = attempt.start();
-        let stop = attempt.stop();
         let piece = match self.occupants[start] {
             Some(p) if p.color == self.to_move => Ok(p),
             Some(p) => Err(IllegalMove::UnownedPiece(p)),
@@ -593,6 +579,23 @@ impl Board {
         {
             Some((_, _)) => Ok(()),
             None => Err(IllegalMove::NotPossible),
+        }?;
+
+        self.make_move_unchecked(attempt)
+    }
+
+    #[inline]
+    pub fn make_move_unchecked(&mut self, attempt: Move) -> Result<MoveKind, IllegalMove> {
+        #[cfg(debug_assertions)]
+        assert_board_consistent!(self, "make_move_unchecked start");
+
+        // piece being moved
+        let start = attempt.start();
+        let stop = attempt.stop();
+        let piece = match self.occupants[start] {
+            Some(p) if p.color == self.to_move => Ok(p),
+            Some(p) => Err(IllegalMove::UnownedPiece(p)),
+            None => Err(IllegalMove::NonexistentPiece(start)),
         }?;
 
         // save state
@@ -688,52 +691,14 @@ impl Board {
         // final postprocessing
         self.manage_castling_rights(piece, attempt, undo.captured);
         self.to_move = !self.to_move;
+        let captured = undo.captured;
+        self.undo_stack.push(undo);
 
         // now, have to check legality of board state
         if let Some(king) = self.king_of(piece.color)
             && self.is_attacked(king, !piece.color)
         {
-            // undo the move
-            self.to_move = !self.to_move;
-            self.castling_rights = undo.castling_rights;
-
-            // un-castle rook if needed
-            if let Some((rook_start, rook_stop)) = undo.castled_rook {
-                self.positions[PieceKind::Rook] &= !rook_stop;
-                self.positions[PieceKind::Rook] |= rook_start;
-                self.occupancy[piece.color] &= !rook_stop;
-                self.occupancy[piece.color] |= rook_start;
-                self.occupants[rook_stop] = None;
-                self.occupants[rook_start] = Some(Piece {
-                    color: piece.color,
-                    kind: PieceKind::Rook,
-                });
-            }
-
-            #[cfg(debug_assertions)]
-            assert_board_consistent!(self, "make_move after undo castle");
-
-            // reverse piece movement
-            self.positions[piece.kind] &= !stop;
-            self.occupancy[piece.color] &= !stop;
-            self.occupants[stop] = None;
-
-            #[cfg(debug_assertions)]
-            assert_board_consistent!(self, "make_move after undo piece placement");
-
-            self.positions[piece.kind] |= start;
-            self.occupancy[piece.color] |= start;
-            self.occupants[start] = Some(piece);
-
-            #[cfg(debug_assertions)]
-            assert_board_consistent!(self, "make_move after undo piece pickup");
-
-            // restore captured piece
-            if let Some(captured) = undo.captured {
-                self.positions[captured.kind] |= stop;
-                self.occupancy[captured.color] |= stop;
-                self.occupants[stop] = Some(captured);
-            }
+            self.unmake_move();
 
             #[cfg(debug_assertions)]
             assert_board_consistent!(self, "make_move after undo capture");
@@ -742,13 +707,9 @@ impl Board {
         }
 
         // move was legal: determine move kind, then push to undo stack and moves vector
-        let move_kind = undo
-            .captured
+        let move_kind = captured
             .map(|p| MoveKind::Capture(p.kind))
             .unwrap_or(MoveKind::Quiet);
-
-        self.moves.push(attempt);
-        self.undo_stack.push(undo);
 
         #[cfg(debug_assertions)]
         assert_board_consistent!(self, "make_move end on legal move");
@@ -776,8 +737,6 @@ impl Board {
                  Move being unmade: {}\n\
                  Start: {} (has piece: {})\n\
                  Stop: {} (has piece: {})\n\
-                 Undo stack size: {}\n\
-                 Moves vector: {}\n\
                  Current turn: {:?}\n\
                  Castling rights in undo: {:?}",
                 attempt,
@@ -785,12 +744,6 @@ impl Board {
                 self.occupants[start.as_index()].is_some(),
                 stop,
                 self.occupants[stop.as_index()].is_some(),
-                self.undo_stack.len(),
-                self.moves
-                    .iter()
-                    .map(|m| m.to_string())
-                    .collect::<Vec<String>>()
-                    .join(" "),
                 self.to_move,
                 undo.castling_rights
             )
@@ -798,7 +751,6 @@ impl Board {
 
         // other state
         self.to_move = !self.to_move;
-        self.moves.pop();
         self.castling_rights = undo.castling_rights;
 
         // un-castle rook if this was a castling move
@@ -847,6 +799,7 @@ impl Board {
         assert_board_consistent!(self, "unmake_move end");
     }
 
+    #[inline]
     fn king_of(&self, color: Color) -> Option<Tile> {
         (self.positions[PieceKind::King] & self.occupancy[color])
             .tiles()
@@ -854,6 +807,7 @@ impl Board {
     }
 
     /// Returns the player in check, if any.
+    #[inline]
     pub fn in_check(&self) -> Option<Color> {
         for color in enum_iterator::all::<Color>() {
             if let Some(tile) = self.king_of(color)
@@ -867,6 +821,7 @@ impl Board {
 
     /// Returns the winner of the current board, if any. Useful for checking
     /// if a game has ended.
+    #[inline]
     pub fn winner(&self) -> Option<Color> {
         if let Some(king) = self.king_of(self.to_move)
             && self.is_attacked(king, !self.to_move)

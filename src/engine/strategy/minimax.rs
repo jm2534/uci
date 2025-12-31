@@ -93,7 +93,10 @@ impl Minimax {
         let mut nodes: usize = 0;
 
         for action in moves {
-            board.make_move(action).expect("Search make illegal move");
+            board
+                .make_move_unchecked(action)
+                .expect("Search make illegal move");
+
             let (child_result, nodes_explored) = self.minvalue(board, depth - 1, alpha, beta);
             board.unmake_move();
 
@@ -155,7 +158,10 @@ impl Minimax {
         let mut nodes: usize = 0;
 
         for action in moves {
-            board.make_move(action).unwrap();
+            board
+                .make_move_unchecked(action)
+                .expect("Search make illegal move");
+
             let (child_result, nodes_explored) = self.maxvalue(board, depth - 1, alpha, beta);
             board.unmake_move();
 
