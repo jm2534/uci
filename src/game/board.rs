@@ -24,6 +24,9 @@ use thiserror::Error;
 
 use super::moves::{Move, MoveKind};
 
+/// Asserts that the board's internal state is consistent, meaning all occupancy, occupant, and
+/// position structures completely agree with each other on the board state.
+#[allow(unused_macros)]
 macro_rules! assert_board_consistent {
     ($board:expr, $context:expr) => {
         // 1. occupants array matches occupancy bitboards with correct kinds and colors

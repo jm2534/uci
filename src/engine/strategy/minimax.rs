@@ -26,8 +26,9 @@ impl PartialOrd for ScoredMove {
 #[derive(Debug)]
 pub struct Minimax {
     start: Instant,
-    limit: Duration,
-    max_depth: usize,
+    pub limit: Duration,
+    pub max_depth: usize,
+    // move_buffers: Vec<Vec<PseudoLegalMove>>,
 }
 
 impl Default for Minimax {
@@ -36,12 +37,13 @@ impl Default for Minimax {
             start: Instant::now(),
             limit: Duration::from_secs(5),
             max_depth: Self::DEFAULT_MAX_DEPTH,
+            // move_buffers: vec![Vec::new(); Self::DEFAULT_MAX_DEPTH],
         }
     }
 }
 
 impl Minimax {
-    const DEFAULT_MAX_DEPTH: usize = if cfg!(debug_assertions) { 5 } else { 20 };
+    pub const DEFAULT_MAX_DEPTH: usize = if cfg!(debug_assertions) { 5 } else { 20 };
 
     fn should_stop(&self) -> bool {
         // only in release builds
@@ -72,6 +74,7 @@ impl Minimax {
         depth: usize,
         mut alpha: isize,
         beta: isize,
+        move_buffers: &mut [Vec<PseudoLegalMove>],
     ) -> (ScoredMove, usize) {
         // stop condition check, checking time only ever other depth to reduce cost
         if board.winner().is_some() || depth == 0 || self.should_stop() {
@@ -84,20 +87,21 @@ impl Minimax {
             );
         }
 
-        let mut moves = Vec::new();
-        board.populate_legal_moves(Color::White, &mut moves);
-        self.order(board, &mut moves);
+        let (moves, child_buffers) = move_buffers.split_first_mut().unwrap();
+        board.populate_legal_moves(Color::White, moves);
+        self.order(board, moves);
 
         let mut best_score = isize::MIN;
         let mut best_move = None;
         let mut nodes: usize = 0;
 
-        for action in moves {
+        for action in moves.drain(..) {
             board
                 .make_validated_move(action)
                 .expect("Search make illegal move");
 
-            let (child_result, nodes_explored) = self.minvalue(board, depth - 1, alpha, beta);
+            let (child_result, nodes_explored) =
+                self.minvalue(board, depth - 1, alpha, beta, child_buffers);
             board.unmake_move();
 
             // Get the score from opponent's perspective
@@ -137,6 +141,7 @@ impl Minimax {
         depth: usize,
         alpha: isize,
         mut beta: isize,
+        move_buffers: &mut [Vec<PseudoLegalMove>],
     ) -> (ScoredMove, usize) {
         // stop condition check, checking time only ever other depth to reduce cost
         if board.winner().is_some() || depth == 0 || self.should_stop() {
@@ -149,20 +154,21 @@ impl Minimax {
             );
         }
 
-        let mut moves = Vec::new();
-        board.populate_legal_moves(Color::Black, &mut moves);
-        self.order(board, &mut moves);
+        let (moves, child_buffers) = move_buffers.split_first_mut().unwrap();
+        board.populate_legal_moves(Color::Black, moves);
+        self.order(board, moves);
 
         let mut best_score = isize::MAX;
         let mut best_move = None;
         let mut nodes: usize = 0;
 
-        for action in moves {
+        for action in moves.drain(..) {
             board
                 .make_validated_move(action)
                 .expect("Search make illegal move");
 
-            let (child_result, nodes_explored) = self.maxvalue(board, depth - 1, alpha, beta);
+            let (child_result, nodes_explored) =
+                self.maxvalue(board, depth - 1, alpha, beta, child_buffers);
             board.unmake_move();
 
             nodes += nodes_explored;
@@ -199,24 +205,26 @@ impl Strategy for Minimax {
         // iterative deepening
         self.start = Instant::now();
         let mut best_move = None;
+        let mut buffers = vec![Vec::with_capacity(256); self.max_depth];
         for depth in 1..=self.max_depth {
             if self.should_stop() {
                 break; // time's up
             }
 
+            let (buffers, _) = buffers.split_at_mut(depth);
             let alpha = isize::MIN;
             let beta = isize::MAX;
             let (result, nodes) = match board.to_move() {
-                Color::Black => self.minvalue(board, depth, alpha, beta),
-                Color::White => self.maxvalue(board, depth, alpha, beta),
+                Color::Black => self.minvalue(board, depth, alpha, beta, buffers),
+                Color::White => self.maxvalue(board, depth, alpha, beta, buffers),
             };
 
             if let Some(mv) = result.attempt {
                 best_move = Some(mv);
-                // println!(
-                //     "info depth {} score {} move {}, nodes {}",
-                //     depth, result.score, mv, nodes
-                // );
+                println!(
+                    "info depth {} score {} move {}, nodes {}",
+                    depth, result.score, mv, nodes
+                );
             }
         }
 

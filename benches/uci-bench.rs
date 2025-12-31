@@ -5,6 +5,7 @@ use uci::engine::strategy::Strategy;
 use uci::engine::strategy::minimax::Minimax;
 use uci::game::Color;
 use uci::game::board::Board;
+use uci::game::moves::PseudoLegalMove;
 
 // Test positions for benchmarking
 struct TestPosition {
@@ -190,6 +191,7 @@ fn bench_search_depth(c: &mut Criterion) {
 
     let depths = [3, 4, 5, 6]; // Test multiple depths
 
+    let mut buffers = vec![Vec::with_capacity(256); *depths.last().unwrap()];
     for depth in depths {
         for position in TEST_POSITIONS.iter().take(3) {
             // Only test first 3 positions to save time
@@ -197,7 +199,7 @@ fn bench_search_depth(c: &mut Criterion) {
 
             // Pre-calculate node count for throughput reporting
             // This gives us nodes/second (NPS) - the standard chess engine performance metric
-            let (_, nodes) = search_to_depth(&mut board, depth);
+            let (_, nodes) = search_to_depth(&mut board, depth, &mut buffers[..depth]);
             group.throughput(Throughput::Elements(nodes as u64));
 
             group.bench_with_input(
@@ -212,9 +214,10 @@ fn bench_search_depth(c: &mut Criterion) {
                                 0,
                                 "Fresh board should have empty undo_stack"
                             );
-                            board
+                            let buffers = vec![Vec::with_capacity(256); depth];
+                            (board, buffers)
                         },
-                        |board| search_to_depth(board, depth),
+                        |(board, buffers)| search_to_depth(board, depth, &mut buffers[..depth]),
                         BatchSize::SmallInput,
                     );
                 },
@@ -231,6 +234,7 @@ fn bench_search_depth(c: &mut Criterion) {
 fn search_to_depth(
     board: &mut Board,
     depth: usize,
+    buffers: &mut [Vec<PseudoLegalMove>],
 ) -> (Option<uci::game::moves::PseudoLegalMove>, usize) {
     let strategy = Minimax::default();
 
@@ -239,11 +243,11 @@ fn search_to_depth(
 
     match board.to_move() {
         Color::Black => {
-            let (result, nodes) = strategy.minvalue(board, depth, alpha, beta);
+            let (result, nodes) = strategy.minvalue(board, depth, alpha, beta, buffers);
             (result.attempt, nodes)
         }
         Color::White => {
-            let (result, nodes) = strategy.maxvalue(board, depth, alpha, beta);
+            let (result, nodes) = strategy.maxvalue(board, depth, alpha, beta, buffers);
             (result.attempt, nodes)
         }
     }
