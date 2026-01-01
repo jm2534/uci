@@ -162,7 +162,8 @@ impl Minimax {
         let mut best_move = None;
         let mut nodes: usize = 0;
 
-        for action in moves.drain(..) {
+        // note we reverse the order of moves to prioritize low-value moves for max
+        for action in moves.drain(..).rev() {
             board
                 .make_validated_move(action)
                 .expect("Search make illegal move");
@@ -175,7 +176,7 @@ impl Minimax {
 
             if child_result.score < best_score {
                 best_score = child_result.score;
-                best_move = Some(action); // opponent's best move at this level
+                best_move = Some(action);
             }
 
             if best_score <= alpha {
